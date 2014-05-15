@@ -73,8 +73,13 @@ typedef struct wb_monitor {
 	unit_t *pause_m;
 	unit_t pam_num;
 	unit_t pam_p;
-	
+
 	//neighbor monitor
+	unit_t *cneighbor_m;
+	unit_t cnm_num;
+	unit_t cnm_p;
+	
+	//neighbor meeting monitor
 	NT *neighbor_m;
 	unit_t nm_num;
 	unit_t nm_p;

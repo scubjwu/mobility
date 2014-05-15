@@ -16,7 +16,7 @@ typedef struct neighbor {
 	unit_t *meeting_pos;	//record all the meeting pos
 	unit_t meeting_p;
 	unit_t meeting_num;
-}NEIGHBOR;
+} __attribute__ ((packed)) NEIGHBOR;
 
 typedef struct node {
 	unit_t fpos; //the pos of current record in trace file
@@ -41,16 +41,16 @@ typedef struct node {
 	unit_t *pause_D;		//pause time distribution
 	unit_t pause_num;
 	unit_t pause_p;
-}NODE;
+} __attribute__ ((packed)) NODE;
 
 //store the pos info at every timestamp
 typedef struct pos {
 	unit_t *node_id;	//list of nodes on this pos at time t
 	unit_t node_num;	
 	unit_t node_p;
-	bool update;
 	unit_t pos_id;
 	unit_t freq;
-}POS;
+	bool update;
+} __attribute__ ((packed)) POS;
 
 #endif

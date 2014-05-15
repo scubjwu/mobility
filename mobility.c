@@ -12,7 +12,7 @@
 #define LINELEN	512
 #define BUFLEN	1024
 #define MALLOC_ROUND	1024
-#define TIME_SLOT	600	//30 min
+#define TIME_SLOT	1800	//30 min
 
 #define TIME_FORMAT	"%Y-%m-%d %H:%M:%S"
 #define LINE_FORMAT	"%ld,%lf,%lf,%[^,],%ld"
@@ -181,6 +181,7 @@ static void init_struct(const char *file)
 
 	for(i=0; i<pos_num; i++) {
 		init_pos(&plist[i]);
+		plist[i].pos_id = i;
 	}
 }
 
@@ -240,7 +241,6 @@ static void pos_update(const NODE *n)
 		p->freq++;
 }
 
-//TODO: use define ???
 static void node_pos_update(unit_t id)
 {
 	NODE *n = &nlist[id];
@@ -413,9 +413,49 @@ static bool node_run(unit_t id)
 	return true;
 }
 
-static void save_simulation(void)
+static void record_pos(void)
 {
 	//TODO:
+}
+
+static void record_node_pos(void)
+{
+	//TODO:
+}
+
+static void record_node_flight(void)
+{
+	//TODO:
+}
+
+static void record_node_pause(void)
+{
+	//TODO:
+}
+
+static void record_node_neighbor(void)
+{
+	//TODO:
+}
+
+//TODO: we need also provide utility functions to analyze the simulation resutls!!!
+
+static void save_simulation(void)
+{
+	//record the visiting freq of each pos
+	record_pos();
+
+	//record the visiting pos of each node
+	record_node_pos();
+
+	//record the flight of each node
+	record_node_flight();
+
+	//record the pause time of each node
+	record_node_pause();
+
+	//record the neighbor and corresponding meeting pos of each node
+	record_node_neighbor();
 }
 
 static int cmp_nei(const void *n1, const void *n2)

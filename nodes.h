@@ -49,6 +49,7 @@ typedef struct pos {
 	unit_t node_num;	
 	unit_t node_p;
 	bool update;
+	unit_t pos_id;
 	unit_t freq;
 }POS;
 

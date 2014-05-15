@@ -13,6 +13,7 @@
 #define BUFLEN	1024
 #define MALLOC_ROUND	1024
 #define TIME_SLOT	1800	//30 min
+#define WB_THRESHOLD	1000
 
 #define TIME_FORMAT	"%Y-%m-%d %H:%M:%S"
 #define LINE_FORMAT	"%ld,%lf,%lf,%[^,],%ld"
@@ -25,6 +26,7 @@ static time_t timer;
 static FILE *FP;
 static unit_t running_node;
 static char *line = NULL;
+static WM monitor = {0};
 
 #define array_needsize(type, base, cur, cnt, init)	\
 	if((cnt) > (cur)) {	\
@@ -138,18 +140,29 @@ static void init_node(NODE *n, unit_t id)
 	n->user_id = id;
 	n->fpos = init_fpos(id);
 	
-	array_needsize(NEIGHBOR, n->neighbor_D, n->neighbor_num, 0.1 * nodes_num, array_zero_init);
+	array_needsize(NEIGHBOR, n->neighbor_D, n->neighbor_num, 2, array_zero_init);
 
-	array_needsize(unit_t, n->pos_D, n->pos_num, 0.01 * pos_num, array_zero_init);
+	//wb if num of visiting pos bigger than 1000
+	array_needsize(unit_t, n->pos_D, n->pos_num, 10, array_zero_init);
 
-	array_needsize(double, n->flight_D, n->flight_num, 1000, array_zero_init);
+	//wb if num of flight bigger than 1000
+	array_needsize(double, n->flight_D, n->flight_num, 10, array_zero_init);
 
-	array_needsize(unit_t, n->pause_D, n->pause_num, 1000, array_zero_init);
+	//wb if num of pause bigger than 1000
+	array_needsize(unit_t, n->pause_D, n->pause_num, 10, array_zero_init);
 }
 
 static inline void init_pos(POS *p)
 {
-	array_needsize(unit_t, p->node_id, p->node_num, 100, array_zero_init);
+	array_needsize(unit_t, p->node_id, p->node_num, 10, array_zero_init);
+}
+
+static void init_wb(void)
+{
+	array_needsize(unit_t, monitor.flight_m, monitor.fm_num, 10, array_zero_init);
+	array_needsize(unit_t, monitor.pos_m, monitor.pom_num, 10, array_zero_init);
+	array_needsize(unit_t, monitor.pause_m, monitor.pam_num, 10, array_zero_init);
+	array_needsize(NT, monitor.neighbor_m, monitor.nm_num, 10, array_zero_init);
 }
 
 static void init_struct(const char *file)
@@ -183,6 +196,8 @@ static void init_struct(const char *file)
 		init_pos(&plist[i]);
 		plist[i].pos_id = i;
 	}
+
+	init_wb();
 }
 
 static void free_node(NODE *n)
@@ -199,6 +214,26 @@ static void free_node(NODE *n)
 		free(n->neighbor_D);
 	}
 }
+
+#define wm_free	\
+	do {	\
+		if(monitor.flight_m) {	\
+			free(monitor.flight_m);	\
+			monitor.flight_m = NULL;	\
+		}	\
+		if(monitor.pos_m) {	\
+			free(monitor.pos_m);	\
+			monitor.pos_m = NULL;	\
+		}	\
+		if(monitor.pause_m) {	\
+			free(monitor.pause_m);	\
+			monitor.pause_m = NULL;	\
+		}	\
+		if(monitor.neighbor_m) {	\
+			free(monitor.neighbor_m);	\
+			monitor.neighbor_m = NULL;	\
+		}	\
+	}while(0)
 
 static void free_struct(void)
 {
@@ -224,6 +259,8 @@ static void free_struct(void)
 		free(line);
 		line = NULL;
 	}
+
+	wm_free;
 }
 
 static void pos_update(const NODE *n)
@@ -241,6 +278,15 @@ static void pos_update(const NODE *n)
 		p->freq++;
 }
 
+static void wm_pos_add(unit_t id)
+{
+	if(monitor.pom_p >= monitor.pom_num)
+		array_needsize(unit_t, monitor.pos_m, monitor.pom_num, monitor.pom_num + 1, array_zero_init);
+
+	monitor.pos_m[monitor.pom_p] = id;
+	monitor.pom_p++;
+}
+
 static void node_pos_update(unit_t id)
 {
 	NODE *n = &nlist[id];
@@ -249,6 +295,18 @@ static void node_pos_update(unit_t id)
 
 	n->pos_D[n->pos_p] = n->pos_id;
 	n->pos_p++;
+
+	if(n->pos_p > WB_THRESHOLD) 
+		wm_pos_add(id);	
+}
+
+static void wm_flight_add(unit_t id)
+{
+	if(monitor.fm_p >= monitor.fm_num)
+		array_needsize(unit_t, monitor.flight_m, monitor.fm_num, monitor.fm_num + 1, array_zero_init);
+
+	monitor.flight_m[monitor.fm_p] = id;
+	monitor.fm_p++;
 }
 
 static void node_flight_update(unit_t id, double l)
@@ -259,6 +317,18 @@ static void node_flight_update(unit_t id, double l)
 
 	n->flight_D[n->flight_p] = l;
 	n->flight_p++;
+
+	if(n->flight_p > WB_THRESHOLD)
+		wm_flight_add(id);
+}
+
+static void wm_pause_add(unit_t id)
+{
+	if(monitor.pam_p >= monitor.pam_num)
+		array_needsize(unit_t, monitor.pause_m, monitor.pam_num, monitor.pam_num + 1, array_zero_init);
+
+	monitor.pause_m[monitor.pam_p] = id;
+	monitor.pam_p++;
 }
 
 static void node_pause_update(unit_t id, unit_t t)
@@ -269,6 +339,9 @@ static void node_pause_update(unit_t id, unit_t t)
 
 	n->pause_D[n->pause_p] = t;
 	n->pause_p++;
+
+	if(n->pause_p > WB_THRESHOLD)
+		wm_pause_add(id);
 }
 
 static void neighbor_meeting_update(NEIGHBOR *n, unit_t p)
@@ -287,7 +360,8 @@ static void neighbor_meeting_add(unit_t neighbor, NODE *n)
 
 	NEIGHBOR *new = &(n->neighbor_D[n->neighbor_p]);
 	new->id = neighbor;
-	array_needsize(unit_t, new->meeting_pos, new->meeting_num, 100, array_zero_init);
+	//wb if num of meeting pos bigger than 1000
+	array_needsize(unit_t, new->meeting_pos, new->meeting_num, 10, array_zero_init);
 	new->meeting_pos[new->meeting_p] = n->pos_id;
 	
 	new->meeting_p++;
@@ -463,6 +537,16 @@ static int cmp_nei(const void *n1, const void *n2)
 	return (((NEIGHBOR *)n1)->id - ((NEIGHBOR *)n2)->id);
 }
 
+static void wm_neighbor_add(unit_t node_id, unit_t neighbor_id)
+{
+	if(monitor.nm_p >= monitor.nm_num)
+		array_needsize(NT, monitor.neighbor_m, monitor.nm_num, monitor.nm_num + 1, array_zero_init);
+
+	monitor.neighbor_m[monitor.nm_p].node_id = node_id;
+	monitor.neighbor_m[monitor.nm_p].neighbor_id = neighbor_id;
+	monitor.nm_p++;
+}
+
 //update node id's neighbors
 static void node_neighbor_update(unit_t id, POS *p)
 {
@@ -477,6 +561,8 @@ static void node_neighbor_update(unit_t id, POS *p)
 		res = bsearch(&key, n->neighbor_D, n->neighbor_p, sizeof(NEIGHBOR), cmp_nei);
 		if(res) {	//update the neighbor record
 			neighbor_meeting_update(res, n->pos_id);
+			if(res->meeting_p > WB_THRESHOLD)
+				wm_neighbor_add(id, res->id);
 		}
 		else {	//new neighbor
 			neighbor_meeting_add(/*neighbor*/p->node_id[i], n);
@@ -514,6 +600,79 @@ static void plist_clear(void)
 	}
 }
 
+static void wm_flight_wb(void)
+{
+	unit_t i, id;
+	NODE *n;
+	for(i=0; i<monitor.fm_p; i++){
+		id = monitor.flight_m[i];	
+		n = &nlist[id];
+
+		//TODO: writeback to DB
+		n->flight_p = 0;
+	}
+
+	monitor.fm_p = 0;
+}
+
+static void wm_pos_wb(void)
+{
+	unit_t i, id;
+	NODE *n;
+	for(i=0; i<monitor.pom_p; i++) {
+		id = monitor.pos_m[i];
+		n = &nlist[id];
+
+		//TODO: writeback to DB
+		n->pos_p = 0;
+	}
+
+	monitor.pom_p = 0;
+}
+
+static void wm_pause_wb(void)
+{
+	unit_t i, id;
+	NODE *n;
+	for(i=0; i<monitor.pam_p; i++){
+		id = monitor.pause_m[i];
+		n = &nlist[id];
+
+		//TODO: writeback to DB
+		n->pause_p = 0;
+	}
+
+	monitor.pam_p = 0;
+}
+
+static void wm_neighbor_wb(void)
+{
+	unit_t i, id, nid;
+	NODE *n;
+	for(i=0; i<monitor.nm_p; i++) {
+		id = monitor.neighbor_m[i].node_id;
+		nid = monitor.neighbor_m[i].neighbor_id;
+		n = &nlist[id];
+
+		//TODO: writeback to DB
+		n->neighbor_D[nid].meeting_p = 0;
+	}
+
+	monitor.nm_p = 0;
+}
+
+#define wm_writeback 	\
+	do {	\
+		if(monitor.fm_p)	\
+			wm_flight_wb();	\
+		if(monitor.pom_p)	\
+			wm_pos_wb();	\
+		if(monitor.pam_p)	\
+			wm_pause_wb();	\
+		if(monitor.nm_p)	\
+			wm_neighbor_wb();	\
+	}while(0)
+
 int main(int argc, char *argv[])
 {
 	if(argc < 2) {
@@ -545,7 +704,13 @@ int main(int argc, char *argv[])
 
 		timer += TIME_SLOT;
 		r_status = false;
-		plist_clear();	//reset plist every time...
+		
+		//see if we need write back any record
+		wm_writeback;
+
+		//reset plist very time
+		plist_clear();
+
 	}
 
 	free_struct();

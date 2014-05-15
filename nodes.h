@@ -53,4 +53,31 @@ typedef struct pos {
 	bool update;
 } __attribute__ ((packed)) POS;
 
+typedef struct n_taular {
+	unit_t node_id;
+	unit_t neighbor_id;
+} NT;
+
+typedef struct wb_monitor {
+	//flight monitor
+	unit_t *flight_m;
+	unit_t fm_num;
+	unit_t fm_p;
+
+	//node pos monitor
+	unit_t *pos_m;
+	unit_t pom_num;
+	unit_t pom_p;
+
+	//pause monitor
+	unit_t *pause_m;
+	unit_t pam_num;
+	unit_t pam_p;
+	
+	//neighbor monitor
+	NT *neighbor_m;
+	unit_t nm_num;
+	unit_t nm_p;
+} WM;
+
 #endif

@@ -301,7 +301,7 @@ static void init_struct(const char *file)
 		plist[i].pos_id = i;
 	}
 
-	//init fifo
+	//init fifo first
 	fb_queue = fifo_alloc(QUEUE_LEN);
 	pob_queue = fifo_alloc(QUEUE_LEN);
 	pab_queue = fifo_alloc(QUEUE_LEN);
@@ -310,7 +310,6 @@ static void init_struct(const char *file)
 	init_wb();
 
 	init_monitor();
-
 }
 
 static void free_node(NODE *n)

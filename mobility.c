@@ -142,8 +142,7 @@ static void init_node(NODE *n, unit_t id)
 	n->user_id = id;
 	n->fpos = init_fpos(id);
 	
-	//wb if num of neighbor bigger than WB_THRESHOLD
-	array_needsize(true, NEIGHBOR, n->neighbor_D, n->neighbor_num, 2, array_zero_init);
+	array_needsize(false, NEIGHBOR, n->neighbor_D, n->neighbor_num, 2, array_zero_init);
 
 	//wb if num of visiting pos bigger than WB_THRESHOLD
 	array_needsize(true, unit_t, n->pos_D, n->pos_num, 10, array_zero_init);
@@ -369,20 +368,21 @@ static void wm_cneighbor_add(unit_t id)
 static void neighbor_meeting_add(unit_t neighbor, NODE *n)
 {
 	if(n->neighbor_p >= n->neighbor_num)
-		array_needsize(true, NEIGHBOR, n->neighbor_D, n->neighbor_num, n->neighbor_num + 1, array_zero_init);
+		array_needsize(false, NEIGHBOR, n->neighbor_D, n->neighbor_num, n->neighbor_num + 1, array_zero_init);
 
 	NEIGHBOR *new = &(n->neighbor_D[n->neighbor_p]);
 	new->id = neighbor;
 	//wb if num of meeting pos bigger than WB_THRESHOLD
 	if(new->meeting_num == 0)
 		array_needsize(true, unit_t, new->meeting_pos, new->meeting_num, 10, array_zero_init);
+
 	new->meeting_pos[new->meeting_p] = n->pos_id;
 	
 	new->meeting_p++;
 	n->neighbor_p++;
 
-	if(n->neighbor_p >= WB_THRESHOLD)
-		wm_cneighbor_add(n->user_id);
+//	if(n->neighbor_p >= WB_THRESHOLD)
+//		wm_cneighbor_add(n->user_id);
 }
 
 static inline double rad(double d)
@@ -690,7 +690,7 @@ static void wm_neighbor_wb(void)
 {
 	unit_t i, id, nid;
 	NODE *n;
-	NEIGHBOR key, *res;
+	NEIGHBOR key, *res, tmp;
 
 	for(i=0; i<monitor.nm_p; i++) {
 		id = monitor.neighbor_m[i].node_id;
@@ -701,6 +701,14 @@ static void wm_neighbor_wb(void)
 
 		//TODO: writeback to DB
 		res->meeting_p = 0;
+
+		//after writing back this block, we swap it to the last position of the array and re-sort the array
+		memcpy(&tmp, res, sizeof(NEIGHBOR));
+		memcpy(res, &(n->neighbor_D[n->neighbor_p - 1]), sizeof(NEIGHBOR));
+		memcpy(&(n->neighbor_D[n->neighbor_p - 1]), &tmp, sizeof(NEIGHBOR));
+
+		n->neighbor_p--;
+		qsort(n->neighbor_D, n->neighbor_p, sizeof(NEIGHBOR), cmp_nei);
 	}
 
 	monitor.nm_p = 0;
@@ -717,9 +725,12 @@ static void wm_neighbor_wb(void)
 			wm_pause_wb();	\
 		if(monitor.nm_p)	\
 			wm_neighbor_wb();	\
+	}while(0)
+#if 0
 		if(monitor.cnm_p)	\
 			wm_cneighbor_wb();	\
 	}while(0)
+#endif
 
 int main(int argc, char *argv[])
 {

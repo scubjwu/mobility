@@ -5,6 +5,7 @@
 #include <string.h>
 #include <stdbool.h>
 #include <math.h>
+#include <pthread.h>
 
 #include "nodes.h"
 
@@ -13,7 +14,6 @@
 #define BUFLEN	1024
 #define MALLOC_ROUND	1024
 #define TIME_SLOT	1800	//30 min
-#define WB_THRESHOLD	100
 
 #define TIME_FORMAT	"%Y-%m-%d %H:%M:%S"
 #define LINE_FORMAT	"%ld,%lf,%lf,%[^,],%ld"
@@ -27,6 +27,17 @@ static FILE *FP;
 static unit_t running_node;
 static char *line = NULL;
 static WM monitor = {0};
+
+//wb buffer
+static FB fb[WB_THRESHOLD];
+static POB pob[WB_THRESHOLD];
+static PAB pab[WB_THRESHOLD];
+static NB nb[WB_THRESHOLD];
+
+static int fb_num;
+static int pob_num;
+static int pab_num;
+static int nb_num;
 
 #define array_needsize(limit, type, base, cur, cnt, init)	\
 	if((cnt) > (cur)) {	\
@@ -82,6 +93,86 @@ static char *cmd_system(const char *cmd)
 		pclose(f);
 
 	return res;
+}
+
+void *tf_wb(void *arg)
+{
+	while(1) {
+		pthread_mutex_lock(&(monitor.f_mtx));
+		{
+			if(fb_num != WB_THRESHOLD)
+				pthread_cond_wait(&(monitor.f_req), &(monitor.f_mtx));
+		
+		//
+		//TODO: parse the fb and write to flight.csv
+		//
+			
+			printf("tf_wb\n");
+			fb_num = 0;
+			pthread_cond_signal(&(monitor.f_rep));
+		}
+		pthread_mutex_unlock(&(monitor.f_mtx));
+	}
+}
+
+void *tpo_wb(void *arg)
+{
+	while(1) {
+		pthread_mutex_lock(&(monitor.po_mtx));
+		{
+			if(pob_num != WB_THRESHOLD)
+				pthread_cond_wait(&(monitor.po_req), &(monitor.po_mtx));
+		
+		//
+		//TODO: parse the pob and write to pos.csv
+		//
+
+			printf("tpo_wb\n");
+			pob_num = 0;
+			pthread_cond_signal(&(monitor.po_rep));
+		}
+		pthread_mutex_unlock(&(monitor.po_mtx));
+	}
+}
+
+void *tpa_wb(void *arg)
+{
+	while(1) {
+		pthread_mutex_lock(&(monitor.pa_mtx));
+		{
+			if(pab_num != WB_THRESHOLD)
+				pthread_cond_wait(&(monitor.pa_req), &(monitor.pa_mtx));
+		
+		//
+		//TODO: parse the pab and write to pause.csv
+		//
+
+			printf("tpa_wb\n");
+			pab_num = 0;
+			pthread_cond_signal(&(monitor.pa_rep));
+		}
+		pthread_mutex_unlock(&(monitor.pa_mtx));
+	}
+}
+
+void *tn_wb(void *arg)
+{
+	while(1) {
+		pthread_mutex_lock(&(monitor.neighbor_mtx));
+		{
+			if(nb_num != WB_THRESHOLD)
+				pthread_cond_wait(&(monitor.neighbor_req), &(monitor.neighbor_mtx));
+		
+		//
+		//TODO: parse the nb and write to neighbor.csv
+		//
+
+			printf("tn_wb\n");
+			nb_num = 0;
+			pthread_cond_signal(&(monitor.neighbor_rep));
+		}
+		pthread_mutex_unlock(&(monitor.neighbor_mtx));
+	}
 }
 
 static void init_file(const char *file)
@@ -168,6 +259,41 @@ static void init_wb(void)
 	array_needsize(false, NT, monitor.neighbor_m, monitor.nm_num, 10, array_zero_init);
 }
 
+static void init_monitor(void)
+{
+	monitor.f_mtx = (pthread_mutex_t)PTHREAD_MUTEX_INITIALIZER;
+	monitor.f_req = (pthread_cond_t)PTHREAD_COND_INITIALIZER;
+	monitor.f_rep = (pthread_cond_t)PTHREAD_COND_INITIALIZER;
+	monitor.flight = fopen("./flight.csv", "w");
+
+	monitor.po_mtx = (pthread_mutex_t)PTHREAD_MUTEX_INITIALIZER;
+	monitor.po_req = (pthread_cond_t)PTHREAD_COND_INITIALIZER;
+	monitor.po_rep = (pthread_cond_t)PTHREAD_COND_INITIALIZER;
+	monitor.pos = fopen("./pos.csv", "w");
+
+	monitor.pa_mtx = (pthread_mutex_t)PTHREAD_MUTEX_INITIALIZER;
+	monitor.pa_req = (pthread_cond_t)PTHREAD_COND_INITIALIZER;
+	monitor.pa_rep = (pthread_cond_t)PTHREAD_COND_INITIALIZER;
+	monitor.pause = fopen("./pause.csv", "w");
+
+	monitor.neighbor_mtx = (pthread_mutex_t)PTHREAD_MUTEX_INITIALIZER;
+	monitor.neighbor_req = (pthread_cond_t)PTHREAD_COND_INITIALIZER;
+	monitor.neighbor_rep = (pthread_cond_t)PTHREAD_COND_INITIALIZER;
+	monitor.neighbor = fopen("./neighbor.csv", "w");
+
+	int i;
+	for(i=0; i<WB_THRESHOLD; i++) {
+		nb[i].nb_len = WB_THRESHOLD;
+		nb[i].nb = (unit_t *)calloc(WB_THRESHOLD, sizeof(unit_t));
+	}
+
+	//start wb threads at last
+	pthread_create(&(monitor.f_tid), NULL, tf_wb, NULL);
+	pthread_create(&(monitor.po_tid), NULL, tpo_wb, NULL);
+	pthread_create(&(monitor.pa_tid), NULL, tpa_wb, NULL);
+	pthread_create(&(monitor.neighbor_tid), NULL, tn_wb, NULL);
+}
+
 static void init_struct(const char *file)
 {
 	char cmd[CMDLEN] = {0};
@@ -201,6 +327,8 @@ static void init_struct(const char *file)
 	}
 
 	init_wb();
+
+	init_monitor();
 }
 
 static void free_node(NODE *n)
@@ -262,6 +390,28 @@ static void free_struct(void)
 		free(line);
 		line = NULL;
 	}
+
+	pthread_mutex_destroy(&(monitor.f_mtx));
+	pthread_cond_destroy(&(monitor.f_req));
+	pthread_cond_destroy(&(monitor.f_rep));
+
+	pthread_mutex_destroy(&(monitor.po_mtx));
+	pthread_cond_destroy(&(monitor.po_req));
+	pthread_cond_destroy(&(monitor.po_rep));
+
+	pthread_mutex_destroy(&(monitor.pa_mtx));
+	pthread_cond_destroy(&(monitor.pa_req));
+	pthread_cond_destroy(&(monitor.pa_rep));
+
+	pthread_mutex_destroy(&(monitor.neighbor_mtx));
+	pthread_cond_destroy(&(monitor.neighbor_req));
+	pthread_cond_destroy(&(monitor.neighbor_rep));
+	//free nb
+	for(i=0; i<WB_THRESHOLD; i++) 
+		if(nb[i].nb) {
+			free(nb[i].nb);
+			nb[i].nb = NULL;
+		}
 
 	wm_free;
 }
@@ -511,21 +661,25 @@ static void record_pos(void)
 static void record_node_pos(void)
 {
 	//TODO:
+	fclose(monitor.pos);
 }
 
 static void record_node_flight(void)
 {
 	//TODO:
+	fclose(monitor.flight);
 }
 
 static void record_node_pause(void)
 {
 	//TODO:
+	fclose(monitor.pause);
 }
 
 static void record_node_neighbor(void)
 {
 	//TODO:
+	fclose(monitor.neighbor);
 }
 
 //TODO: we need also provide utility functions to analyze the simulation resutls!!!
@@ -623,8 +777,21 @@ static void wm_flight_wb(void)
 	for(i=0; i<monitor.fm_p; i++){
 		id = monitor.flight_m[i];	
 		n = &nlist[id];
+		
+		//write to buffer
+		pthread_mutex_lock(&(monitor.f_mtx));
+		{
+			if(fb_num == WB_THRESHOLD) {
+				pthread_cond_signal(&(monitor.f_req));
+				pthread_cond_wait(&(monitor.f_rep), &(monitor.f_mtx));
+			}
+					
+			fb[fb_num].id = id;
+			memcpy(fb[fb_num].fb, n->flight_D, WB_THRESHOLD * sizeof(double));
+			fb_num++;
+		}
+		pthread_mutex_unlock(&(monitor.f_mtx));
 
-		//TODO: writeback to DB
 		n->flight_p = 0;
 	}
 
@@ -640,7 +807,19 @@ static void wm_pos_wb(void)
 		id = monitor.pos_m[i];
 		n = &nlist[id];
 
-		//TODO: writeback to DB
+		pthread_mutex_lock(&(monitor.po_mtx));
+		{
+			if(pob_num == WB_THRESHOLD) {
+				pthread_cond_signal(&(monitor.po_req));
+				pthread_cond_wait(&(monitor.po_rep), &(monitor.po_mtx));
+			}
+					
+			pob[pob_num].id = id;
+			memcpy(pob[pob_num].pob, n->pos_D, WB_THRESHOLD * sizeof(unit_t));
+			pob_num++;
+		}
+		pthread_mutex_unlock(&(monitor.po_mtx));
+
 		n->pos_p = 0;
 	}
 
@@ -656,7 +835,18 @@ static void wm_pause_wb(void)
 		id = monitor.pause_m[i];
 		n = &nlist[id];
 
-		//TODO: writeback to DB
+		pthread_mutex_lock(&(monitor.pa_mtx));
+		{
+			if(pab_num == WB_THRESHOLD) {
+				pthread_cond_signal(&(monitor.pa_req));
+				pthread_cond_wait(&(monitor.pa_rep), &(monitor.pa_mtx));
+			}
+					
+			pab[pab_num].id = id;
+			memcpy(pab[pab_num].pab, n->pause_D, WB_THRESHOLD * sizeof(unit_t));
+			pab_num++;
+		}
+		pthread_mutex_unlock(&(monitor.pa_mtx));
 		n->pause_p = 0;
 	}
 

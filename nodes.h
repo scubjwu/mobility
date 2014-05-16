@@ -8,7 +8,7 @@ typedef enum node_status {
 	NEW,
 	STAYING,
 	EXITING
-}NODE_STATUS;
+} NODE_STATUS;
 
 typedef struct neighbor {
 	unit_t id;	//neighbor id
@@ -45,13 +45,13 @@ typedef struct node {
 
 //store the pos info at every timestamp
 typedef struct pos {
+	bool update;
+	unit_t node_p;
 	unit_t *node_id;	//list of nodes on this pos at time t
 	unit_t node_num;	
-	unit_t node_p;
 	unit_t pos_id;
 	unit_t freq;
-	bool update;
-} __attribute__ ((packed)) POS;
+} POS;
 
 typedef struct n_taular {
 	unit_t node_id;

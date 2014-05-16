@@ -903,8 +903,6 @@ static void wm_cneighbor_wb(void)
 
 				nb_num++;
 			}
-
-			//TODO: writeback to DB
 			tmp->meeting_p = 0;
 		}
 		n->neighbor_p = 0;

@@ -1,7 +1,8 @@
 #ifndef _NODES_H
 #define _NODES_H
 
-#define WB_THRESHOLD	20
+#define WB_THRESHOLD	32	//power of 2!
+#define WB_BUFFLEN	1000
 
 typedef unsigned long unit_t;
 
@@ -69,7 +70,6 @@ typedef struct wb_monitor {
 	pthread_t f_tid;
 	pthread_mutex_t f_mtx;
 	pthread_cond_t f_req;
-	pthread_cond_t f_rep;
 	FILE *flight;
 
 	//node pos monitor
@@ -80,7 +80,6 @@ typedef struct wb_monitor {
 	pthread_t po_tid;
 	pthread_mutex_t po_mtx;
 	pthread_cond_t po_req;
-	pthread_cond_t po_rep;
 	FILE *pos;
 
 	//pause monitor
@@ -91,7 +90,6 @@ typedef struct wb_monitor {
 	pthread_t pa_tid;
 	pthread_mutex_t pa_mtx;
 	pthread_cond_t pa_req;
-	pthread_cond_t pa_rep;
 	FILE *pause;
 
 	//neighbor monitor
@@ -108,30 +106,7 @@ typedef struct wb_monitor {
 	pthread_t neighbor_tid;
 	pthread_mutex_t neighbor_mtx;
 	pthread_cond_t neighbor_req;
-	pthread_cond_t neighbor_rep;
 	FILE *neighbor;
 } WM;
-
-typedef struct flight_buff {
-	unit_t id;
-	double fb[WB_THRESHOLD];
-} FB;
-
-typedef struct pos_buff {
-	unit_t id;
-	unit_t pob[WB_THRESHOLD];
-} POB;
-
-typedef struct pause_buff {
-	unit_t id;
-	unit_t pab[WB_THRESHOLD];
-} PAB;
-
-typedef struct neighbor_buff {
-	unit_t node_id;
-	unit_t neighbor_id;
-	unit_t nb_len;
-	unit_t *nb;	//init with size WB_THRESHOLD
-} NB;
 
 #endif

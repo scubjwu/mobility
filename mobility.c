@@ -8,12 +8,14 @@
 #include <pthread.h>
 
 #include "nodes.h"
+#include "fifo.h"
 
 #define CMDLEN	512
 #define LINELEN	512
 #define BUFLEN	1024
 #define MALLOC_ROUND	1024
 #define TIME_SLOT	1800	//30 min
+#define QUEUE_LEN	10
 
 #define TIME_FORMAT	"%Y-%m-%d %H:%M:%S"
 #define LINE_FORMAT	"%ld,%lf,%lf,%[^,],%ld"
@@ -29,15 +31,30 @@ static char *line = NULL;
 static WM monitor = {0};
 
 //wb buffer
-static FB fb[WB_THRESHOLD];
-static POB pob[WB_THRESHOLD];
-static PAB pab[WB_THRESHOLD];
-static NB nb[WB_THRESHOLD];
+static char fb[WB_THRESHOLD][WB_BUFFLEN];	//node id,flight1,flight2,...\r\n
+static char pob[WB_THRESHOLD][WB_BUFFLEN];	//node id,pos1,pos2,...\r\n
+static char pab[WB_THRESHOLD][WB_BUFFLEN];	//node id,pause1,pause2,...\r\n
+static char nb[WB_THRESHOLD][WB_BUFFLEN];	//node id,neighbor id,meeting_pos1,meeting_pos2,...\r\n
 
-static int fb_num;
-static int pob_num;
-static int pab_num;
-static int nb_num;
+static unsigned int fb_num; //always mod WB_THRESHOLD
+static unsigned int pob_num;
+static unsigned int pab_num;
+static unsigned int nb_num;
+
+static FIFO *fb_queue;
+static FIFO *pob_queue;
+static FIFO *pab_queue;
+static FIFO *nb_queue;
+
+#define fb_i	(fb_num & (WB_THRESHOLD - 1))
+#define pob_i	(pob_num & (WB_THRESHOLD - 1))
+#define pab_i	(pab_num & (WB_THRESHOLD - 1))
+#define nb_i	(nb_num & (WB_THRESHOLD - 1))
+
+static unsigned int fb_num;
+static unsigned int pob_num;
+static unsigned int pab_num;
+static unsigned int nb_num;
 
 #define array_needsize(limit, type, base, cur, cnt, init)	\
 	if((cnt) > (cur)) {	\
@@ -97,81 +114,49 @@ static char *cmd_system(const char *cmd)
 
 void *tf_wb(void *arg)
 {
-	while(1) {
-		pthread_mutex_lock(&(monitor.f_mtx));
-		{
-			if(fb_num != WB_THRESHOLD)
-				pthread_cond_wait(&(monitor.f_req), &(monitor.f_mtx));
+	fifo_data_t tmp;
+	for(;;) {
+		while(_fifo_get(fb_queue, &tmp) != 0) 
+			pthread_cond_wait(&(monitor.f_req), &(monitor.f_mtx));
+
+		//TODO: tmp is a string...write it to file
 		
-		//
-		//TODO: parse the fb and write to flight.csv
-		//
-			
-			printf("tf_wb\n");
-			fb_num = 0;
-			pthread_cond_signal(&(monitor.f_rep));
-		}
-		pthread_mutex_unlock(&(monitor.f_mtx));
 	}
 }
 
 void *tpo_wb(void *arg)
 {
-	while(1) {
-		pthread_mutex_lock(&(monitor.po_mtx));
-		{
-			if(pob_num != WB_THRESHOLD)
-				pthread_cond_wait(&(monitor.po_req), &(monitor.po_mtx));
-		
-		//
-		//TODO: parse the pob and write to pos.csv
-		//
+	fifo_data_t tmp;
+	for(;;) {
+		while(_fifo_get(pob_queue, &tmp) != 0) 
+			pthread_cond_wait(&(monitor.po_req), &(monitor.po_mtx));
 
-			printf("tpo_wb\n");
-			pob_num = 0;
-			pthread_cond_signal(&(monitor.po_rep));
-		}
-		pthread_mutex_unlock(&(monitor.po_mtx));
+		//TODO: tmp is a string...write it to file
+		
 	}
 }
 
 void *tpa_wb(void *arg)
 {
-	while(1) {
-		pthread_mutex_lock(&(monitor.pa_mtx));
-		{
-			if(pab_num != WB_THRESHOLD)
-				pthread_cond_wait(&(monitor.pa_req), &(monitor.pa_mtx));
-		
-		//
-		//TODO: parse the pab and write to pause.csv
-		//
+	fifo_data_t tmp;
+	for(;;) {
+		while(_fifo_get(pab_queue, &tmp) != 0) 
+			pthread_cond_wait(&(monitor.pa_req), &(monitor.pa_mtx));
 
-			printf("tpa_wb\n");
-			pab_num = 0;
-			pthread_cond_signal(&(monitor.pa_rep));
-		}
-		pthread_mutex_unlock(&(monitor.pa_mtx));
+		//TODO: tmp is a string...write it to file
+		
 	}
 }
 
 void *tn_wb(void *arg)
 {
-	while(1) {
-		pthread_mutex_lock(&(monitor.neighbor_mtx));
-		{
-			if(nb_num != WB_THRESHOLD)
-				pthread_cond_wait(&(monitor.neighbor_req), &(monitor.neighbor_mtx));
-		
-		//
-		//TODO: parse the nb and write to neighbor.csv
-		//
+	fifo_data_t tmp;
+	for(;;) {
+		while(_fifo_get(nb_queue, &tmp) != 0) 
+			pthread_cond_wait(&(monitor.neighbor_req), &(monitor.neighbor_mtx));
 
-			printf("tn_wb\n");
-			nb_num = 0;
-			pthread_cond_signal(&(monitor.neighbor_rep));
-		}
-		pthread_mutex_unlock(&(monitor.neighbor_mtx));
+		//TODO: tmp is a string...write it to file
+		
 	}
 }
 
@@ -263,29 +248,19 @@ static void init_monitor(void)
 {
 	monitor.f_mtx = (pthread_mutex_t)PTHREAD_MUTEX_INITIALIZER;
 	monitor.f_req = (pthread_cond_t)PTHREAD_COND_INITIALIZER;
-	monitor.f_rep = (pthread_cond_t)PTHREAD_COND_INITIALIZER;
 	monitor.flight = fopen("./flight.csv", "w");
 
 	monitor.po_mtx = (pthread_mutex_t)PTHREAD_MUTEX_INITIALIZER;
 	monitor.po_req = (pthread_cond_t)PTHREAD_COND_INITIALIZER;
-	monitor.po_rep = (pthread_cond_t)PTHREAD_COND_INITIALIZER;
 	monitor.pos = fopen("./pos.csv", "w");
 
 	monitor.pa_mtx = (pthread_mutex_t)PTHREAD_MUTEX_INITIALIZER;
 	monitor.pa_req = (pthread_cond_t)PTHREAD_COND_INITIALIZER;
-	monitor.pa_rep = (pthread_cond_t)PTHREAD_COND_INITIALIZER;
 	monitor.pause = fopen("./pause.csv", "w");
 
 	monitor.neighbor_mtx = (pthread_mutex_t)PTHREAD_MUTEX_INITIALIZER;
 	monitor.neighbor_req = (pthread_cond_t)PTHREAD_COND_INITIALIZER;
-	monitor.neighbor_rep = (pthread_cond_t)PTHREAD_COND_INITIALIZER;
 	monitor.neighbor = fopen("./neighbor.csv", "w");
-
-	int i;
-	for(i=0; i<WB_THRESHOLD; i++) {
-		nb[i].nb_len = WB_THRESHOLD;
-		nb[i].nb = (unit_t *)calloc(WB_THRESHOLD, sizeof(unit_t));
-	}
 
 	//start wb threads at last
 	pthread_create(&(monitor.f_tid), NULL, tf_wb, NULL);
@@ -326,9 +301,16 @@ static void init_struct(const char *file)
 		plist[i].pos_id = i;
 	}
 
+	//init fifo
+	fb_queue = fifo_alloc(QUEUE_LEN);
+	pob_queue = fifo_alloc(QUEUE_LEN);
+	pab_queue = fifo_alloc(QUEUE_LEN);
+	nb_queue = fifo_alloc(QUEUE_LEN);
+
 	init_wb();
 
 	init_monitor();
+
 }
 
 static void free_node(NODE *n)
@@ -393,27 +375,22 @@ static void free_struct(void)
 
 	pthread_mutex_destroy(&(monitor.f_mtx));
 	pthread_cond_destroy(&(monitor.f_req));
-	pthread_cond_destroy(&(monitor.f_rep));
 
 	pthread_mutex_destroy(&(monitor.po_mtx));
 	pthread_cond_destroy(&(monitor.po_req));
-	pthread_cond_destroy(&(monitor.po_rep));
 
 	pthread_mutex_destroy(&(monitor.pa_mtx));
 	pthread_cond_destroy(&(monitor.pa_req));
-	pthread_cond_destroy(&(monitor.pa_rep));
 
 	pthread_mutex_destroy(&(monitor.neighbor_mtx));
 	pthread_cond_destroy(&(monitor.neighbor_req));
-	pthread_cond_destroy(&(monitor.neighbor_rep));
-	//free nb
-	for(i=0; i<WB_THRESHOLD; i++) 
-		if(nb[i].nb) {
-			free(nb[i].nb);
-			nb[i].nb = NULL;
-		}
 
 	wm_free;
+
+	fifo_free(fb_queue);
+	fifo_free(pob_queue);
+	fifo_free(pab_queue);
+	fifo_free(nb_queue);
 }
 
 static void pos_update(const NODE *n)
@@ -770,28 +747,43 @@ static void plist_clear(void)
 	}
 }
 
+static void double_to_string(char *str, const double *array, int len)
+{
+	int i;
+	for(i=0; i<len-1; i++)
+		str += sprintf(str, "%.2lf,", array[i]);
+
+	sprintf(str, "%.2lf\r\n", array[i]);
+}
+
 static void wm_flight_wb(void)
 {
 	unit_t i, id;
 	NODE *n;
+	bool sflag;
+	int p;
+	char *str;
 	for(i=0; i<monitor.fm_p; i++){
 		id = monitor.flight_m[i];	
 		n = &nlist[id];
-		
-		//write to buffer
-		pthread_mutex_lock(&(monitor.f_mtx));
+		sflag = false;
 		{
-			if(fb_num == WB_THRESHOLD) {
+			//convert flight into string format
+			p = fb_i;
+			str = fb[p];
+			str += sprintf(str, "%ld,", id);
+			double_to_string(str, n->flight_D, WB_THRESHOLD);
+
+			//write to buffer
+			while(_fifo_put(fb_queue, fb[p]) != 0) {
+				if(sflag)
+					continue;
+
 				pthread_cond_signal(&(monitor.f_req));
-				pthread_cond_wait(&(monitor.f_rep), &(monitor.f_mtx));
+				sflag = true;
 			}
-					
-			fb[fb_num].id = id;
-			memcpy(fb[fb_num].fb, n->flight_D, WB_THRESHOLD * sizeof(double));
 			fb_num++;
 		}
-		pthread_mutex_unlock(&(monitor.f_mtx));
-
 		n->flight_p = 0;
 	}
 
@@ -799,27 +791,43 @@ static void wm_flight_wb(void)
 //	printf("flight WB\n");
 }
 
+static void int_to_string(char *str, const unit_t *array, int len)
+{
+	int i;
+	for(i=0; i<len-1; i++)
+		str += sprintf(str, "%ld,", array[i]);
+
+	sprintf(str, "%ld\r\n", array[i]);
+}
+
 static void wm_pos_wb(void)
 {
 	unit_t i, id;
 	NODE *n;
+	bool sflag;
+	int p;
+	char *str;
 	for(i=0; i<monitor.pom_p; i++) {
 		id = monitor.pos_m[i];
 		n = &nlist[id];
-
-		pthread_mutex_lock(&(monitor.po_mtx));
+		sflag = false;
 		{
-			if(pob_num == WB_THRESHOLD) {
+			//convert flight into string format
+			p = pob_i;
+			str = pob[p];
+			str += sprintf(str, "%ld,", id);
+			int_to_string(str, n->pos_D, WB_THRESHOLD);
+
+			//write to buffer
+			while(_fifo_put(pob_queue, pob[p]) != 0) {
+				if(sflag)
+					continue;
+
 				pthread_cond_signal(&(monitor.po_req));
-				pthread_cond_wait(&(monitor.po_rep), &(monitor.po_mtx));
+				sflag = true;
 			}
-					
-			pob[pob_num].id = id;
-			memcpy(pob[pob_num].pob, n->pos_D, WB_THRESHOLD * sizeof(unit_t));
 			pob_num++;
 		}
-		pthread_mutex_unlock(&(monitor.po_mtx));
-
 		n->pos_p = 0;
 	}
 
@@ -831,22 +839,31 @@ static void wm_pause_wb(void)
 {
 	unit_t i, id;
 	NODE *n;
+	bool sflag;
+	int p;
+	char *str;
 	for(i=0; i<monitor.pam_p; i++){
 		id = monitor.pause_m[i];
 		n = &nlist[id];
-
-		pthread_mutex_lock(&(monitor.pa_mtx));
+		sflag = false;
 		{
-			if(pab_num == WB_THRESHOLD) {
+			//convert flight into string format
+			p = pab_i;
+			str = pab[p];
+			str += sprintf(str, "%ld,", id);
+			int_to_string(str, n->pause_D, WB_THRESHOLD);
+
+			//write to buffer
+			while(_fifo_put(pab_queue, pab[p]) != 0) {
+				if(sflag)
+					continue;
+
 				pthread_cond_signal(&(monitor.pa_req));
-				pthread_cond_wait(&(monitor.pa_rep), &(monitor.pa_mtx));
+				sflag = true;
 			}
-					
-			pab[pab_num].id = id;
-			memcpy(pab[pab_num].pab, n->pause_D, WB_THRESHOLD * sizeof(unit_t));
+
 			pab_num++;
 		}
-		pthread_mutex_unlock(&(monitor.pa_mtx));
 		n->pause_p = 0;
 	}
 
@@ -931,7 +948,7 @@ int main(int argc, char *argv[])
 	
 //start to run
 	bool r_status = false;
-	while(1) {
+	for(;;) {
 		//replay the trace for each nodes first
 		unit_t i;
 		for(i=0; i<nodes_num; i++) 

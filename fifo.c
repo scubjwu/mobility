@@ -3,7 +3,8 @@
 #include <stdio.h>
 #include <string.h>
 #include <strings.h>
-#include <pthread.h>
+
+#include "fifo.h"
 
 #define is_power_of_2(x)	((x) != 0 && (((x) & ((x) - 1)) == 0))
 
@@ -97,15 +98,6 @@
 	(void) (&_x == &_y);	\
 	_x < _y ? _x : _y; })
 
-typedef void *fifo_data_t;
-	
-struct fifo_t {
-	fifo_data_t *data;	/* the buffer holding the data */
-	unsigned int size;	/* the size of the allocated buffer */
-	unsigned int in;	/* data is added at offset (in % size) */
-	unsigned int out;	/* data is extracted from off. (out % size) */
-};
-
 static inline int fls(int x)
 {
 	int r;
@@ -137,9 +129,9 @@ static unsigned long __roundup_pow_of_two(unsigned long n)
 	return 1UL << fls_long(n - 1);
 }
 
-struct fifo_t *fifo_init(fifo_data_t *buffer, unsigned int size)
+static FIFO *fifo_init(fifo_data_t *buffer, unsigned int size)
 {
-	struct fifo_t *fifo;
+	FIFO *fifo;
 
 	/* size must be a power of 2 */
 	if(!is_power_of_2(size)) {
@@ -147,7 +139,7 @@ struct fifo_t *fifo_init(fifo_data_t *buffer, unsigned int size)
 		return NULL;
 	}
 
-	fifo = (struct fifo_t *)malloc(sizeof(struct fifo_t));
+	fifo = (FIFO *)malloc(sizeof(FIFO));
 	if(!fifo) {
 		perror("malloc");
 		abort();
@@ -160,10 +152,10 @@ struct fifo_t *fifo_init(fifo_data_t *buffer, unsigned int size)
 	return fifo;
 }
 
-struct fifo_t *fifo_alloc(unsigned int size)
+FIFO *fifo_alloc(unsigned int size)
 {
 	fifo_data_t *data;
-	struct fifo_t *ret;
+	FIFO *ret;
 
 	if (!is_power_of_2(size)) {
 		if(size > 0x80000000) {
@@ -187,23 +179,25 @@ struct fifo_t *fifo_alloc(unsigned int size)
 	return ret;
 }
 
-void fifo_free(struct fifo_t *fifo)
+void fifo_free(FIFO *fifo)
 {
 	if(fifo->in - fifo->out) {
 		printf("may have memory leak...\n");
+#if 0
 		int i = fifo->size;
 		while(i) {
 			if(fifo->data[i-1])
 				free(fifo->data[i-1]);
 			i--;
 		}
+#endif
 	}
 
 	free(fifo->data);
 	free(fifo);
 }
 
-unsigned int _fifo_put(struct fifo_t *fifo, fifo_data_t put)
+unsigned int _fifo_put(FIFO *fifo, fifo_data_t put)
 {
 	if(fifo->size - fifo->in + fifo->out == 0)
 		return -1;
@@ -219,7 +213,7 @@ unsigned int _fifo_put(struct fifo_t *fifo, fifo_data_t put)
 	return 0;
 }
 
-unsigned int _fifo_get(struct fifo_t *fifo, fifo_data_t *get)
+unsigned int _fifo_get(FIFO *fifo, fifo_data_t *get)
 {
 	if(fifo->in - fifo->out == 0)
 		return -1;
@@ -235,10 +229,11 @@ unsigned int _fifo_get(struct fifo_t *fifo, fifo_data_t *get)
 	return 0;
 }
 
+#if 0
 //////////////////test/////////////////////////////////////////////
 #define f_len	4
 
-struct fifo_t *f;
+FIFO *f;
 char w[] = "writes:";
 
 static pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
@@ -246,7 +241,7 @@ static pthread_cond_t req = PTHREAD_COND_INITIALIZER;
 
 void *p_writer(void *arg)
 {
-	int i = 0;
+	int i = 0, sflag;
 	char *data;
 	
 	sleep(1);
@@ -254,10 +249,15 @@ void *p_writer(void *arg)
 	for(;;) {
 		data = malloc(128);
 		sprintf(data, "%s %s %d", __func__, w, i++);
+		sflag = 0;
 
 		while(_fifo_put(f, data) != 0)	{//always try to write data...
+			if(sflag)
+				continue;
+
 			printf("write block\n");
 			pthread_cond_signal(&req);
+			sflag = 1;
 		}
 
 		if(i == 10) {
@@ -301,4 +301,5 @@ int main(void)
 	
 	return 0;
 }
+#endif
 

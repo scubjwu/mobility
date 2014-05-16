@@ -874,6 +874,9 @@ static void wm_cneighbor_wb(void)
 {
 	unit_t i, id;
 	NODE *n;
+	bool sflag;
+	int p;
+	char *str;
 	for(i=0; i<monitor.cnm_p; i++) {
 		id = monitor.cneighbor_m[i];
 		n = &nlist[id];
@@ -881,6 +884,25 @@ static void wm_cneighbor_wb(void)
 		int j;
 		for(j=0; j<n->neighbor_p; j++) {
 			NEIGHBOR *tmp = &(n->neighbor_D[j]);
+			sflag = false;
+			{
+				//convert flight into string format
+				p = nb_i;
+				str = nb[p];
+				str += sprintf(str, "%ld,%ld", id, tmp->id);
+				int_to_string(str, tmp->meeting_pos, WB_THRESHOLD);
+
+				//write to buffer
+				while(_fifo_put(nb_queue, nb[p]) != 0) {
+					if(sflag)
+						continue;
+
+					pthread_cond_signal(&(monitor.neighbor_req));
+					sflag = true;
+				}
+
+				nb_num++;
+			}
 
 			//TODO: writeback to DB
 			tmp->meeting_p = 0;
@@ -896,15 +918,36 @@ static void wm_neighbor_wb(void)
 	unit_t i, id, nid;
 	NODE *n;
 	NEIGHBOR key, *res, tmp;
+	bool sflag;
+	int p;
+	char *str;
 
 	for(i=0; i<monitor.nm_p; i++) {
+		sflag = false;
 		id = monitor.neighbor_m[i].node_id;
 		nid = monitor.neighbor_m[i].neighbor_id;
 		n = &nlist[id];
 		key.id = nid;
 		res = bsearch(&key, n->neighbor_D, n->neighbor_p, sizeof(NEIGHBOR), cmp_nei);
 
-		//TODO: writeback to DB
+		{
+			//convert flight into string format
+			p = nb_i;
+			str = nb[p];
+			str += sprintf(str, "%ld,%ld", id, res->id);
+			int_to_string(str, res->meeting_pos, WB_THRESHOLD);
+
+			//write to buffer
+			while(_fifo_put(nb_queue, nb[p]) != 0) {
+				if(sflag)
+					continue;
+
+				pthread_cond_signal(&(monitor.neighbor_req));
+				sflag = true;
+			}
+
+			nb_num++;
+		}
 		res->meeting_p = 0;
 
 		//after writing back this block, we swap it to the last position of the array and re-sort the array

@@ -183,14 +183,12 @@ void fifo_free(FIFO *fifo)
 {
 	if(fifo->in - fifo->out) {
 		printf("may have memory leak...\n");
-#if 0
 		int i = fifo->size;
 		while(i) {
 			if(fifo->data[i-1])
 				free(fifo->data[i-1]);
 			i--;
 		}
-#endif
 	}
 
 	free(fifo->data);

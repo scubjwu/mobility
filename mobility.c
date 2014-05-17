@@ -834,6 +834,8 @@ static void plist_clear(void)
 	}
 }
 
+#define fifo_is_full(f) ((f)->size - (f)->in + (f)->out == 0 ? true : false)
+
 static void wm_flight_wb(void)
 {
 	unit_t i, id;
@@ -846,6 +848,14 @@ static void wm_flight_wb(void)
 		n = &nlist[id];
 		sflag = false;
 		{
+			while(fifo_is_full(fb_queue)) {
+				if(sflag)
+					continue;
+
+				pthread_cond_signal(&(monitor.f_req));
+				sflag = true;
+			}
+
 			//convert flight into string format
 			p = fb_i;
 			str = fb[p];
@@ -853,13 +863,8 @@ static void wm_flight_wb(void)
 			double_to_string(str, n->flight_D, WB_THRESHOLD);
 
 			//write to buffer
-			while(_fifo_put(fb_queue, fb[p]) != 0) {
-				if(sflag)
-					continue;
+			_fifo_put(fb_queue, fb[p]);
 
-				pthread_cond_signal(&(monitor.f_req));
-				sflag = true;
-			}
 			fb_num++;
 		}
 		n->flight_p = 0;
@@ -882,6 +887,14 @@ static void wm_pos_wb(void)
 		n = &nlist[id];
 		sflag = false;
 		{
+			while(fifo_is_full(pob_queue)) {
+				if(sflag) 
+					continue;
+
+				pthread_cond_signal(&(monitor.po_req));
+				sflag = true;
+			}
+
 			//convert flight into string format
 			p = pob_i;
 			str = pob[p];
@@ -889,13 +902,8 @@ static void wm_pos_wb(void)
 			int_to_string(str, n->pos_D, WB_THRESHOLD);
 
 			//write to buffer
-			while(_fifo_put(pob_queue, pob[p]) != 0) {
-				if(sflag)
-					continue;
+			_fifo_put(pob_queue, pob[p]);
 
-				pthread_cond_signal(&(monitor.po_req));
-				sflag = true;
-			}
 			pob_num++;
 		}
 		n->pos_p = 0;
@@ -917,6 +925,14 @@ static void wm_pause_wb(void)
 		n = &nlist[id];
 		sflag = false;
 		{
+			while(fifo_is_full(pab_queue)) {
+				if(sflag)
+					continue;
+
+				pthread_cond_signal(&(monitor.pa_req));
+				sflag = true;
+			}
+
 			//convert flight into string format
 			p = pab_i;
 			str = pab[p];
@@ -924,13 +940,7 @@ static void wm_pause_wb(void)
 			int_to_string(str, n->pause_D, WB_THRESHOLD);
 
 			//write to buffer
-			while(_fifo_put(pab_queue, pab[p]) != 0) {
-				if(sflag)
-					continue;
-
-				pthread_cond_signal(&(monitor.pa_req));
-				sflag = true;
-			}
+			_fifo_put(pab_queue, pab[p]);
 
 			pab_num++;
 		}
@@ -957,6 +967,14 @@ static void wm_cneighbor_wb(void)
 			NEIGHBOR *tmp = &(n->neighbor_D[j]);
 			sflag = false;
 			{
+				while(fifo_is_full(nb_queue)) {
+					if(sflag)
+						continue;
+
+					pthread_cond_signal(&(monitor.neighbor_req));
+					sflag = true;
+				}
+
 				//convert flight into string format
 				p = nb_i;
 				str = nb[p];
@@ -964,13 +982,7 @@ static void wm_cneighbor_wb(void)
 				int_to_string(str, tmp->meeting_pos, WB_THRESHOLD);
 
 				//write to buffer
-				while(_fifo_put(nb_queue, nb[p]) != 0) {
-					if(sflag)
-						continue;
-
-					pthread_cond_signal(&(monitor.neighbor_req));
-					sflag = true;
-				}
+				_fifo_put(nb_queue, nb[p]);
 
 				nb_num++;
 			}
@@ -1000,6 +1012,14 @@ static void wm_neighbor_wb(void)
 		res = bsearch(&key, n->neighbor_D, n->neighbor_p, sizeof(NEIGHBOR), cmp_nei);
 
 		{
+			while(fifo_is_full(nb_queue)) {
+				if(sflag)
+					continue;
+
+				pthread_cond_signal(&(monitor.neighbor_req));
+				sflag = true;
+			}
+
 			//convert flight into string format
 			p = nb_i;
 			str = nb[p];
@@ -1007,13 +1027,7 @@ static void wm_neighbor_wb(void)
 			int_to_string(str, res->meeting_pos, WB_THRESHOLD);
 
 			//write to buffer
-			while(_fifo_put(nb_queue, nb[p]) != 0) {
-				if(sflag)
-					continue;
-
-				pthread_cond_signal(&(monitor.neighbor_req));
-				sflag = true;
-			}
+			_fifo_put(nb_queue, nb[p]);
 
 			nb_num++;
 		}

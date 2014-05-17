@@ -750,8 +750,8 @@ static void record_node_neighbor(void)
 
 static void save_simulation(void)
 {
-	//record the visiting freq of each pos
-	record_pos();
+	//record the neighbor and corresponding meeting pos of each node
+	record_node_neighbor();
 
 	//record the visiting pos of each node
 	record_node_pos();
@@ -762,8 +762,8 @@ static void save_simulation(void)
 	//record the pause time of each node
 	record_node_pause();
 
-	//record the neighbor and corresponding meeting pos of each node
-	record_node_neighbor();
+	//record the visiting freq of each pos
+	record_pos();
 }
 
 static int cmp_nei(const void *n1, const void *n2)

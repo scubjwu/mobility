@@ -119,8 +119,7 @@ void *tf_wb(void *arg)
 		while(_fifo_get(fb_queue, &tmp) != 0) 
 			pthread_cond_wait(&(monitor.f_req), &(monitor.f_mtx));
 
-		//TODO: tmp is a string...write it to file
-		
+		fwrite(tmp, sizeof(char), strlen((char *)tmp), monitor.flight);
 	}
 }
 
@@ -131,8 +130,7 @@ void *tpo_wb(void *arg)
 		while(_fifo_get(pob_queue, &tmp) != 0) 
 			pthread_cond_wait(&(monitor.po_req), &(monitor.po_mtx));
 
-		//TODO: tmp is a string...write it to file
-		
+		fwrite(tmp, sizeof(char), strlen((char *)tmp), monitor.pos);
 	}
 }
 
@@ -143,8 +141,7 @@ void *tpa_wb(void *arg)
 		while(_fifo_get(pab_queue, &tmp) != 0) 
 			pthread_cond_wait(&(monitor.pa_req), &(monitor.pa_mtx));
 
-		//TODO: tmp is a string...write it to file
-		
+		fwrite(tmp, sizeof(char), strlen((char *)tmp), monitor.pause);
 	}
 }
 
@@ -155,8 +152,7 @@ void *tn_wb(void *arg)
 		while(_fifo_get(nb_queue, &tmp) != 0) 
 			pthread_cond_wait(&(monitor.neighbor_req), &(monitor.neighbor_mtx));
 
-		//TODO: tmp is a string...write it to file
-		
+		fwrite(tmp, sizeof(char), strlen((char *)tmp), monitor.neighbor);
 	}
 }
 
@@ -248,19 +244,19 @@ static void init_monitor(void)
 {
 	monitor.f_mtx = (pthread_mutex_t)PTHREAD_MUTEX_INITIALIZER;
 	monitor.f_req = (pthread_cond_t)PTHREAD_COND_INITIALIZER;
-	monitor.flight = fopen("./flight.csv", "w");
+	monitor.flight = fopen("./node_flight.csv", "w");
 
 	monitor.po_mtx = (pthread_mutex_t)PTHREAD_MUTEX_INITIALIZER;
 	monitor.po_req = (pthread_cond_t)PTHREAD_COND_INITIALIZER;
-	monitor.pos = fopen("./pos.csv", "w");
+	monitor.pos = fopen("./node_pos.csv", "w");
 
 	monitor.pa_mtx = (pthread_mutex_t)PTHREAD_MUTEX_INITIALIZER;
 	monitor.pa_req = (pthread_cond_t)PTHREAD_COND_INITIALIZER;
-	monitor.pause = fopen("./pause.csv", "w");
+	monitor.pause = fopen("./node_pause.csv", "w");
 
 	monitor.neighbor_mtx = (pthread_mutex_t)PTHREAD_MUTEX_INITIALIZER;
 	monitor.neighbor_req = (pthread_cond_t)PTHREAD_COND_INITIALIZER;
-	monitor.neighbor = fopen("./neighbor.csv", "w");
+	monitor.neighbor = fopen("./node_neighbor.csv", "w");
 
 	//start wb threads at last
 	pthread_create(&(monitor.f_tid), NULL, tf_wb, NULL);
@@ -629,32 +625,124 @@ static bool node_run(unit_t id)
 	return true;
 }
 
+static void int_to_string(char *str, const unit_t *array, int len)
+{
+	int i;
+	for(i=0; i<len-1; i++)
+		str += sprintf(str, "%ld,", array[i]);
+
+	sprintf(str, "%ld\r\n", array[i]);
+}
+
+static void double_to_string(char *str, const double *array, int len)
+{
+	int i;
+	for(i=0; i<len-1; i++)
+		str += sprintf(str, "%.2lf,", array[i]);
+
+	sprintf(str, "%.2lf\r\n", array[i]);
+}
+
 static void record_pos(void)
 {
-	//TODO:
+	FILE *fp = fopen("./pos_visiting.csv","w");
+	unit_t i;
+	char pos_str[32] = {0};
+	char *tmp;
+	POS *pt;
+	for(i=0; i<pos_num; i++) {
+		//reset tmp every time
+		tmp = pos_str;
+		tmp[0] = 0;
+		pt = &(plist[i]);
+		sprintf(tmp, "%ld,%ld\r\n", pt->pos_id, pt->freq);
+		fwrite(tmp, sizeof(char), strlen(tmp), fp);
+	}
+
+	fclose(fp);
 }
 
 static void record_node_pos(void)
 {
-	//TODO:
+	unit_t i;
+	char npos_str[WB_BUFFLEN] = {0};
+	char *tmp;
+	NODE *n;
+	for(i=0; i<nodes_num; i++) {
+		n = &(nlist[i]);
+		if(n->pos_p) {
+			tmp = npos_str;
+			tmp[0] = 0;
+			tmp += sprintf(tmp, "%ld,", i);
+			int_to_string(tmp, n->pos_D, n->pos_p);	
+			fwrite(npos_str, sizeof(char), strlen(npos_str), monitor.pos);
+		}
+	}
+
 	fclose(monitor.pos);
 }
 
 static void record_node_flight(void)
 {
-	//TODO:
+	unit_t i;
+	char nflight_str[WB_BUFFLEN] = {0};
+	char *tmp;
+	NODE *n;
+	for(i=0; i<nodes_num; i++) {
+		n = &(nlist[i]);
+		if(n->flight_p) {
+			tmp = nflight_str;
+			tmp[0] = 0;
+			tmp += sprintf(tmp, "%ld,", i);
+			double_to_string(tmp, n->flight_D, n->flight_p);	
+			fwrite(nflight_str, sizeof(char), strlen(nflight_str), monitor.flight);
+		}
+	}
+
 	fclose(monitor.flight);
 }
 
 static void record_node_pause(void)
 {
-	//TODO:
+	unit_t i;
+	char npause_str[WB_BUFFLEN] = {0};
+	char *tmp;
+	NODE *n;
+	for(i=0; i<nodes_num; i++) {
+		n = &(nlist[i]);
+		if(n->pause_p) {
+			tmp = npause_str;
+			tmp[0] = 0;
+			tmp += sprintf(tmp, "%ld,", i);
+			int_to_string(tmp, n->pause_D, n->pause_p);	
+			fwrite(npause_str, sizeof(char), strlen(npause_str), monitor.pause);
+		}
+	}
+
 	fclose(monitor.pause);
 }
 
 static void record_node_neighbor(void)
 {
-	//TODO:
+	unit_t i, j;
+	char neighbor_str[WB_BUFFLEN] = {0};
+	char *tmp;
+	NODE *n;
+	NEIGHBOR *ne;
+	for(i=0; i<nodes_num; i++) {
+		n = &nlist[i];
+		if(n->neighbor_p) {
+			for(j=0; j<n->neighbor_p; j++) {
+				tmp = neighbor_str;
+				tmp[0] = 0;
+				ne = &(n->neighbor_D[j]);
+				tmp += sprintf(tmp, "%ld,%ld,", i, ne->id);
+				int_to_string(tmp, ne->meeting_pos, ne->meeting_p);
+				fwrite(neighbor_str, sizeof(char), strlen(neighbor_str), monitor.neighbor);
+			}
+		}
+	}
+
 	fclose(monitor.neighbor);
 }
 
@@ -746,15 +834,6 @@ static void plist_clear(void)
 	}
 }
 
-static void double_to_string(char *str, const double *array, int len)
-{
-	int i;
-	for(i=0; i<len-1; i++)
-		str += sprintf(str, "%.2lf,", array[i]);
-
-	sprintf(str, "%.2lf\r\n", array[i]);
-}
-
 static void wm_flight_wb(void)
 {
 	unit_t i, id;
@@ -790,14 +869,6 @@ static void wm_flight_wb(void)
 //	printf("flight WB\n");
 }
 
-static void int_to_string(char *str, const unit_t *array, int len)
-{
-	int i;
-	for(i=0; i<len-1; i++)
-		str += sprintf(str, "%ld,", array[i]);
-
-	sprintf(str, "%ld\r\n", array[i]);
-}
 
 static void wm_pos_wb(void)
 {
@@ -889,7 +960,7 @@ static void wm_cneighbor_wb(void)
 				//convert flight into string format
 				p = nb_i;
 				str = nb[p];
-				str += sprintf(str, "%ld,%ld", id, tmp->id);
+				str += sprintf(str, "%ld,%ld,", id, tmp->id);
 				int_to_string(str, tmp->meeting_pos, WB_THRESHOLD);
 
 				//write to buffer
@@ -932,7 +1003,7 @@ static void wm_neighbor_wb(void)
 			//convert flight into string format
 			p = nb_i;
 			str = nb[p];
-			str += sprintf(str, "%ld,%ld", id, res->id);
+			str += sprintf(str, "%ld,%ld,", id, res->id);
 			int_to_string(str, res->meeting_pos, WB_THRESHOLD);
 
 			//write to buffer
@@ -975,6 +1046,15 @@ static void wm_neighbor_wb(void)
 			wm_cneighbor_wb();	\
 	}while(0)
 
+#define flush_wb_buff	\
+	do {	\
+		pthread_cond_signal(&(monitor.f_req));	\
+		pthread_cond_signal(&(monitor.po_req));	\
+		pthread_cond_signal(&(monitor.pa_req));	\
+		pthread_cond_signal(&(monitor.neighbor_req));	\
+		sleep(1);	\
+	} while(0)
+
 int main(int argc, char *argv[])
 {
 	if(argc < 2) {
@@ -995,6 +1075,7 @@ int main(int argc, char *argv[])
 			r_status |= node_run(i);
 
 		if(r_status == false) {
+			flush_wb_buff;
 			save_simulation();
 			printf("simulation done!\n");
 			break;

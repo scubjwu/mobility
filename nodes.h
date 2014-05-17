@@ -1,7 +1,7 @@
 #ifndef _NODES_H
 #define _NODES_H
 
-#define WB_THRESHOLD	32	//power of 2!
+#define WB_THRESHOLD	128	//power of 2!
 #define WB_BUFFLEN	1000
 
 typedef unsigned long unit_t;

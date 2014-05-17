@@ -16,9 +16,12 @@
 #define MALLOC_ROUND	1024
 #define TIME_SLOT	1800	//30 min
 #define QUEUE_LEN	10
+//Need this after codes optimial compile
+#define SLEEP_T	1000
 
 #define TIME_FORMAT	"%Y-%m-%d %H:%M:%S"
 #define LINE_FORMAT	"%ld,%lf,%lf,%[^,],%ld"
+
 
 static NODE *nlist;
 static POS *plist;
@@ -50,11 +53,6 @@ static FIFO *nb_queue;
 #define pob_i	(pob_num & (WB_THRESHOLD - 1))
 #define pab_i	(pab_num & (WB_THRESHOLD - 1))
 #define nb_i	(nb_num & (WB_THRESHOLD - 1))
-
-static unsigned int fb_num;
-static unsigned int pob_num;
-static unsigned int pab_num;
-static unsigned int nb_num;
 
 #define array_needsize(limit, type, base, cur, cnt, init)	\
 	if((cnt) > (cur)) {	\
@@ -187,7 +185,7 @@ static unit_t init_fpos(unit_t id)
 	ssize_t read;
 	double x,y;
 	time_t time;
-	unit_t pos;
+	unit_t pos, res;
 	
 	if(id <= id_pos)
 		fseek(FP, 0, SEEK_SET);
@@ -203,10 +201,16 @@ static unit_t init_fpos(unit_t id)
 			read = getline(&line, &len, FP);	//assume each node has at least two trace records
 			parse_line(line, &id_pos, &x, &y, &time, &pos);
 			nlist[id].next_time = time;
+			
+			//set info back
+			id_pos = id;
+			res = ftell(FP) - read;
+			fseek(FP, res, SEEK_SET);
 
-			return ftell(FP) - read;
+			return res;
 		}
 	}
+	printf("can not find fpos for node: %ld\n", id);
 }
 
 static void init_node(NODE *n, unit_t id)
@@ -288,9 +292,8 @@ static void init_struct(const char *file)
 	plist = (POS *)calloc(pos_num, sizeof(POS));
 
 	unit_t i;
-	for(i=0; i<nodes_num; i++) {
+	for(i=0; i<nodes_num; i++) 
 		init_node(&nlist[i], i);
-	}
 
 	for(i=0; i<pos_num; i++) {
 		init_pos(&plist[i]);
@@ -849,8 +852,11 @@ static void wm_flight_wb(void)
 		sflag = false;
 		{
 			while(fifo_is_full(fb_queue)) {
-				if(sflag)
+			//	printf("%d\n", __LINE__);
+				if(sflag) {
+					usleep(SLEEP_T);
 					continue;
+				}
 
 				pthread_cond_signal(&(monitor.f_req));
 				sflag = true;
@@ -888,8 +894,11 @@ static void wm_pos_wb(void)
 		sflag = false;
 		{
 			while(fifo_is_full(pob_queue)) {
-				if(sflag) 
+			//	printf("%d\n", __LINE__);
+				if(sflag) {
+					usleep(SLEEP_T);
 					continue;
+				}
 
 				pthread_cond_signal(&(monitor.po_req));
 				sflag = true;
@@ -926,8 +935,11 @@ static void wm_pause_wb(void)
 		sflag = false;
 		{
 			while(fifo_is_full(pab_queue)) {
-				if(sflag)
+			//	printf("%d\n", __LINE__);
+				if(sflag) {
+					usleep(SLEEP_T);
 					continue;
+				}
 
 				pthread_cond_signal(&(monitor.pa_req));
 				sflag = true;
@@ -968,8 +980,11 @@ static void wm_cneighbor_wb(void)
 			sflag = false;
 			{
 				while(fifo_is_full(nb_queue)) {
-					if(sflag)
+			//	printf("%d\n", __LINE__);
+					if(sflag) {
+						usleep(SLEEP_T);
 						continue;
+					}
 
 					pthread_cond_signal(&(monitor.neighbor_req));
 					sflag = true;
@@ -979,7 +994,7 @@ static void wm_cneighbor_wb(void)
 				p = nb_i;
 				str = nb[p];
 				str += sprintf(str, "%ld,%ld,", id, tmp->id);
-				int_to_string(str, tmp->meeting_pos, WB_THRESHOLD);
+				int_to_string(str, tmp->meeting_pos, tmp->meeting_p);
 
 				//write to buffer
 				_fifo_put(nb_queue, nb[p]);
@@ -1013,8 +1028,11 @@ static void wm_neighbor_wb(void)
 
 		{
 			while(fifo_is_full(nb_queue)) {
-				if(sflag)
+			//	printf("%d\n", __LINE__);
+				if(sflag) {
+					usleep(SLEEP_T);
 					continue;
+				}
 
 				pthread_cond_signal(&(monitor.neighbor_req));
 				sflag = true;
@@ -1082,6 +1100,7 @@ int main(int argc, char *argv[])
 	
 //start to run
 	bool r_status = false;
+	printf("start to run...\n");
 	for(;;) {
 		//replay the trace for each nodes first
 		unit_t i;

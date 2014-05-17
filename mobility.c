@@ -15,7 +15,6 @@
 #define BUFLEN	1024
 #define MALLOC_ROUND	1024
 #define TIME_SLOT	1800	//30 min
-#define QUEUE_LEN	10
 //Need this after codes optimial compile
 #define SLEEP_T	1000
 

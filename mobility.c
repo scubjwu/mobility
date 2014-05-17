@@ -112,44 +112,60 @@ static char *cmd_system(const char *cmd)
 void *tf_wb(void *arg)
 {
 	fifo_data_t tmp;
+	size_t len;
+
 	for(;;) {
 		while(_fifo_get(fb_queue, &tmp) != 0) 
 			pthread_cond_wait(&(monitor.f_req), &(monitor.f_mtx));
 
-		fwrite(tmp, sizeof(char), strlen((char *)tmp), monitor.flight);
+		len = strlen((char *)tmp);
+		if(fwrite(tmp, sizeof(char), len, monitor.flight) != len && ferror(monitor.flight)) 
+				perror("fwrite flight");
 	}
 }
 
 void *tpo_wb(void *arg)
 {
 	fifo_data_t tmp;
+	size_t len;
+
 	for(;;) {
 		while(_fifo_get(pob_queue, &tmp) != 0) 
 			pthread_cond_wait(&(monitor.po_req), &(monitor.po_mtx));
 
-		fwrite(tmp, sizeof(char), strlen((char *)tmp), monitor.pos);
+		len = strlen((char *)tmp);
+		if(fwrite(tmp, sizeof(char), len, monitor.pos) != len && ferror(monitor.pos))
+			perror("fwrite pos");
 	}
 }
 
 void *tpa_wb(void *arg)
 {
 	fifo_data_t tmp;
+	size_t len;
+
 	for(;;) {
 		while(_fifo_get(pab_queue, &tmp) != 0) 
 			pthread_cond_wait(&(monitor.pa_req), &(monitor.pa_mtx));
 
-		fwrite(tmp, sizeof(char), strlen((char *)tmp), monitor.pause);
+		len = strlen((char *)tmp);
+		if(fwrite(tmp, sizeof(char), len, monitor.pause) != len && ferror(monitor.pause))
+			perror("fwrite pause");
 	}
 }
 
 void *tn_wb(void *arg)
 {
 	fifo_data_t tmp;
+	size_t len;
+
 	for(;;) {
 		while(_fifo_get(nb_queue, &tmp) != 0) 
 			pthread_cond_wait(&(monitor.neighbor_req), &(monitor.neighbor_mtx));
 
-		fwrite(tmp, sizeof(char), strlen((char *)tmp), monitor.neighbor);
+		len = strlen((char *)tmp);
+		if(fwrite(tmp, sizeof(char), len, monitor.neighbor) != len && ferror(monitor.neighbor))
+			perror("fwirte neighbor");
 	}
 }
 
@@ -864,6 +880,7 @@ static void wm_flight_wb(void)
 			//convert flight into string format
 			p = fb_i;
 			str = fb[p];
+			str[0] = 0;
 			str += sprintf(str, "%ld,", id);
 			double_to_string(str, n->flight_D, WB_THRESHOLD);
 
@@ -906,6 +923,7 @@ static void wm_pos_wb(void)
 			//convert flight into string format
 			p = pob_i;
 			str = pob[p];
+			str[0] = 0;
 			str += sprintf(str, "%ld,", id);
 			int_to_string(str, n->pos_D, WB_THRESHOLD);
 
@@ -947,6 +965,7 @@ static void wm_pause_wb(void)
 			//convert flight into string format
 			p = pab_i;
 			str = pab[p];
+			str[0] = 0;
 			str += sprintf(str, "%ld,", id);
 			int_to_string(str, n->pause_D, WB_THRESHOLD);
 
@@ -992,6 +1011,7 @@ static void wm_cneighbor_wb(void)
 				//convert flight into string format
 				p = nb_i;
 				str = nb[p];
+				str[0] = 0;
 				str += sprintf(str, "%ld,%ld,", id, tmp->id);
 				int_to_string(str, tmp->meeting_pos, tmp->meeting_p);
 
@@ -1040,6 +1060,7 @@ static void wm_neighbor_wb(void)
 			//convert flight into string format
 			p = nb_i;
 			str = nb[p];
+			str[0] = 0;
 			str += sprintf(str, "%ld,%ld,", id, res->id);
 			int_to_string(str, res->meeting_pos, WB_THRESHOLD);
 

@@ -9,7 +9,5 @@ node-id,xpos,ypos,time,pos-id
 (See the example csv file for more details)
 
 TODO LIST:
-1) record the simulation result
-2) implement functions to analyze the simulation result
-3) use mysql to fetch data
-4) record the simulation result during the running time to reduce memory usage
+1) implement functions to analyze the simulation result
+2) use mysql to fetch data

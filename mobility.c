@@ -803,11 +803,14 @@ static void wm_neighbor_add(unit_t node_id, unit_t neighbor_id)
 static void node_neighbor_update(unit_t id, POS *p)
 {
 	unit_t i;
+	NODE *n = &nlist[id];
+
 	for(i=0; i<p->node_p; i++) {
-		if(id == p->node_id[i])
+		if(id >= p->node_id[i] ||
+			(n->status == STAYING &&
+			 nlist[p->node_id[i]].status == STAYING))
 			continue;
 
-		NODE *n = &nlist[id];
 		NEIGHBOR key, *res;
 		key.id = p->node_id[i];
 		res = bsearch(&key, n->neighbor_D, n->neighbor_p, sizeof(NEIGHBOR), cmp_nei);
@@ -830,8 +833,8 @@ static void node_update(unit_t id)
 		return;
 
 	POS *p = &plist[nlist[id].pos_id];
-	if(p->update)
-		return;	//have been updated already 
+	if(p->update || p->node_p == 1)
+		return;	//have been updated already or no other nodes on this pos
 
 	//update the neighbors of nodes on this pos
 	unit_t i;

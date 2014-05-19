@@ -1147,7 +1147,6 @@ int main(int argc, char *argv[])
 
 		//reset plist very time
 		plist_clear();
-
 	}
 
 	free_struct();

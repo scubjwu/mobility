@@ -10,4 +10,4 @@ node-id,xpos,ypos,time,pos-id
 
 TODO LIST:
 1) implement functions to analyze the simulation result
-2) use mysql to fetch data
+2) use R to analyze the distribution

@@ -15,8 +15,7 @@
 #define BUFLEN	1024
 #define MALLOC_ROUND	1024
 #define TIME_SLOT	1800	//30 min
-//Need this after codes optimial compile
-#define SLEEP_T	1000
+//#define SLEEP_T	1000
 
 #define TIME_FORMAT	"%Y-%m-%d %H:%M:%S"
 #define LINE_FORMAT	"%ld,%lf,%lf,%[^,],%ld"
@@ -872,7 +871,7 @@ static void wm_flight_wb(void)
 			while(fifo_is_full(fb_queue)) {
 			//	printf("%d\n", __LINE__);
 				if(sflag) {
-					usleep(SLEEP_T);
+			//		usleep(SLEEP_T);
 					continue;
 				}
 
@@ -915,7 +914,7 @@ static void wm_pos_wb(void)
 			while(fifo_is_full(pob_queue)) {
 			//	printf("%d\n", __LINE__);
 				if(sflag) {
-					usleep(SLEEP_T);
+			//		usleep(SLEEP_T);
 					continue;
 				}
 
@@ -957,7 +956,7 @@ static void wm_pause_wb(void)
 			while(fifo_is_full(pab_queue)) {
 			//	printf("%d\n", __LINE__);
 				if(sflag) {
-					usleep(SLEEP_T);
+			//		usleep(SLEEP_T);
 					continue;
 				}
 
@@ -1001,9 +1000,8 @@ static void wm_cneighbor_wb(void)
 			sflag = false;
 			{
 				while(fifo_is_full(nb_queue)) {
-			//	printf("%d\n", __LINE__);
 					if(sflag) {
-						usleep(SLEEP_T);
+			//			usleep(SLEEP_T);
 						continue;
 					}
 
@@ -1052,7 +1050,7 @@ static void wm_neighbor_wb(void)
 			while(fifo_is_full(nb_queue)) {
 			//	printf("%d\n", __LINE__);
 				if(sflag) {
-					usleep(SLEEP_T);
+			//		usleep(SLEEP_T);
 					continue;
 				}
 

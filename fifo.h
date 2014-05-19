@@ -3,11 +3,12 @@
 
 typedef void *fifo_data_t;
 	
+//must use volatile for multiple threads condition without lock
 typedef struct fifo_t {
 	fifo_data_t *data;	/* the buffer holding the data */
-	unsigned int size;	/* the size of the allocated buffer */
-	unsigned int in;	/* data is added at offset (in % size) */
-	unsigned int out;	/* data is extracted from off. (out % size) */
+	volatile unsigned int size;	/* the size of the allocated buffer */
+	volatile unsigned int in;	/* data is added at offset (in % size) */
+	volatile unsigned int out;	/* data is extracted from off. (out % size) */
 } FIFO;
 
 FIFO *fifo_alloc(unsigned int size);

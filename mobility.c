@@ -36,6 +36,7 @@ static char fb[WB_THRESHOLD][WB_BUFFLEN];	//node id,flight1,flight2,...\r\n
 static char pob[WB_THRESHOLD][WB_BUFFLEN];	//node id,pos1,pos2,...\r\n
 static char pab[WB_THRESHOLD][WB_BUFFLEN];	//node id,pause1,pause2,...\r\n
 static char nb[WB_THRESHOLD][WB_BUFFLEN];	//node id,neighbor id,meeting_pos1,meeting_pos2,...\r\n
+static char ntb[WB_THRESHOLD][WB_BUFFLEN];	//node id,neighbor id,0,inter-contact time1,inter-contact time2,...\r\n
 
 static unsigned int fb_num; //always mod WB_THRESHOLD
 static unsigned int pob_num;
@@ -46,6 +47,7 @@ static FIFO *fb_queue;
 static FIFO *pob_queue;
 static FIFO *pab_queue;
 static FIFO *nb_queue;
+static FIFO *ntb_queue;
 
 #define fb_i	(fb_num & (WB_THRESHOLD - 1))
 #define pob_i	(pob_num & (WB_THRESHOLD - 1))
@@ -153,18 +155,33 @@ void *tpa_wb(void *arg)
 	}
 }
 
-void *tn_wb(void *arg)
+void *tnp_wb(void *arg)
 {
 	fifo_data_t tmp;
 	size_t len;
 
 	for(;;) {
 		while(_fifo_get(nb_queue, &tmp) != 0) 
-			pthread_cond_wait(&(monitor.neighbor_req), &(monitor.neighbor_mtx));
+			pthread_cond_wait(&(monitor.neighbor_pos_req), &(monitor.neighbor_pos_mtx));
 
 		len = strlen((char *)tmp);
-		if(fwrite(tmp, sizeof(char), len, monitor.neighbor) != len && ferror(monitor.neighbor))
-			perror("fwirte neighbor");
+		if(fwrite(tmp, sizeof(char), len, monitor.neighbor_pos) != len && ferror(monitor.neighbor_pos))
+			perror("fwirte neighbor pos");
+	}
+}
+
+void *tnt_wb(void *arg)
+{
+	fifo_data_t tmp;
+	size_t len;
+
+	for(;;) {
+		while(_fifo_get(ntb_queue, &tmp) != 0) 
+			pthread_cond_wait(&(monitor.neighbor_time_req), &(monitor.neighbor_time_mtx));
+
+		len = strlen((char *)tmp);
+		if(fwrite(tmp, sizeof(char), len, monitor.neighbor_time) != len && ferror(monitor.neighbor_time))
+			perror("fwirte neighbor time");
 	}
 }
 
@@ -272,15 +289,20 @@ static void init_monitor(void)
 	monitor.pa_req = (pthread_cond_t)PTHREAD_COND_INITIALIZER;
 	monitor.pause = fopen("./node_pause.csv", "w");
 
-	monitor.neighbor_mtx = (pthread_mutex_t)PTHREAD_MUTEX_INITIALIZER;
-	monitor.neighbor_req = (pthread_cond_t)PTHREAD_COND_INITIALIZER;
-	monitor.neighbor = fopen("./node_neighbor.csv", "w");
+	monitor.neighbor_pos_mtx = (pthread_mutex_t)PTHREAD_MUTEX_INITIALIZER;
+	monitor.neighbor_pos_req = (pthread_cond_t)PTHREAD_COND_INITIALIZER;
+	monitor.neighbor_pos = fopen("./node_neighbor_pos.csv", "w");
+
+	monitor.neighbor_time_mtx = (pthread_mutex_t)PTHREAD_MUTEX_INITIALIZER;
+	monitor.neighbor_time_req = (pthread_cond_t)PTHREAD_COND_INITIALIZER;
+	monitor.neighbor_time = fopen("./node_neighbor_time.csv", "w");
 
 	//start wb threads at last
 	pthread_create(&(monitor.f_tid), NULL, tf_wb, NULL);
 	pthread_create(&(monitor.po_tid), NULL, tpo_wb, NULL);
 	pthread_create(&(monitor.pa_tid), NULL, tpa_wb, NULL);
-	pthread_create(&(monitor.neighbor_tid), NULL, tn_wb, NULL);
+	pthread_create(&(monitor.neighbor_pos_tid), NULL, tnp_wb, NULL);
+	pthread_create(&(monitor.neighbor_time_tid), NULL, tnt_wb, NULL);
 }
 
 static void init_struct(const char *file)
@@ -319,6 +341,7 @@ static void init_struct(const char *file)
 	pob_queue = fifo_alloc(QUEUE_LEN);
 	pab_queue = fifo_alloc(QUEUE_LEN);
 	nb_queue = fifo_alloc(QUEUE_LEN);
+	ntb_queue = fifo_alloc(QUEUE_LEN);
 
 	init_wb();
 
@@ -333,8 +356,10 @@ static void free_node(NODE *n)
 		free(n->pause_D);
 
 		unit_t i;
-		for(i=0; i<n->neighbor_num; i++) 
+		for(i=0; i<n->neighbor_num; i++) {
 			free(n->neighbor_D[i].meeting_pos);
+			free(n->neighbor_D[i].meeting_delay);
+		}
 			
 		free(n->neighbor_D);
 	}
@@ -394,8 +419,11 @@ static void free_struct(void)
 	pthread_mutex_destroy(&(monitor.pa_mtx));
 	pthread_cond_destroy(&(monitor.pa_req));
 
-	pthread_mutex_destroy(&(monitor.neighbor_mtx));
-	pthread_cond_destroy(&(monitor.neighbor_req));
+	pthread_mutex_destroy(&(monitor.neighbor_pos_mtx));
+	pthread_cond_destroy(&(monitor.neighbor_pos_req));
+
+	pthread_mutex_destroy(&(monitor.neighbor_time_mtx));
+	pthread_cond_destroy(&(monitor.neighbor_time_req));
 
 	wm_free;
 
@@ -403,6 +431,7 @@ static void free_struct(void)
 	fifo_free(pob_queue);
 	fifo_free(pab_queue);
 	fifo_free(nb_queue);
+	fifo_free(ntb_queue);
 }
 
 static void pos_update(const NODE *n)
@@ -488,10 +517,18 @@ static void node_pause_update(unit_t id, unit_t t)
 
 static void neighbor_meeting_update(NEIGHBOR *n, unit_t p)
 {
-	if(n->meeting_p >= n->meeting_num)
-		array_needsize(true, unit_t, n->meeting_pos, n->meeting_num, n->meeting_num + 1, array_zero_init);
+	unit_t t_num = n->meeting_num;
+	if(n->meeting_p >= t_num) {
+		array_needsize(true, unit_t, n->meeting_pos, t_num, t_num + 1, array_zero_init);
+		t_num = n->meeting_num;
+
+		array_needsize(true, unit_t, n->meeting_delay, t_num, t_num + 1, array_zero_init);
+		n->meeting_num = t_num;
+	}
 
 	n->meeting_pos[n->meeting_p] = p;
+	n->meeting_delay[n->meeting_p] = timer - n->r_timer;
+	n->r_timer = timer;
 	n->meeting_p++;
 }
 
@@ -512,10 +549,14 @@ static void neighbor_meeting_add(unit_t neighbor, NODE *n)
 	NEIGHBOR *new = &(n->neighbor_D[n->neighbor_p]);
 	new->id = neighbor;
 	//wb if num of meeting pos bigger than WB_THRESHOLD
-	if(new->meeting_num == 0) 
+	if(new->meeting_num == 0) {
 		array_needsize(true, unit_t, new->meeting_pos, new->meeting_num, 10, array_zero_init);
+		new->meeting_delay = (unit_t *)calloc(new->meeting_num, sizeof(unit_t));
+	}
 
 	new->meeting_pos[new->meeting_p] = n->pos_id;
+	new->meeting_delay[new->meeting_p] = 0;	//alway to be 0 for the first time
+	new->r_timer = timer;
 	new->meeting_p++;
 	
 	n->neighbor_p++;
@@ -750,17 +791,25 @@ static void record_node_neighbor(void)
 		n = &nlist[i];
 		if(n->neighbor_p) {
 			for(j=0; j<n->neighbor_p; j++) {
-				tmp = neighbor_str;
-				tmp[0] = 0;
 				ne = &(n->neighbor_D[j]);
+				//neighbor pos
+				tmp = &neighbor_str[0];
+				tmp[0] = 0;
 				tmp += sprintf(tmp, "%ld,%ld,", i, ne->id);
 				int_to_string(tmp, ne->meeting_pos, ne->meeting_p);
-				fwrite(neighbor_str, sizeof(char), strlen(neighbor_str), monitor.neighbor);
+				fwrite(neighbor_str, sizeof(char), strlen(neighbor_str), monitor.neighbor_pos);
+				//inter-contact time
+				tmp = &neighbor_str[0];
+				tmp[0] = 0;
+				tmp += sprintf(tmp, "%ld,%ld,", i, ne->id);
+				int_to_string(tmp, ne->meeting_delay, ne->meeting_p);
+				fwrite(neighbor_str, sizeof(char), strlen(neighbor_str), monitor.neighbor_time);
 			}
 		}
 	}
 
-	fclose(monitor.neighbor);
+	fclose(monitor.neighbor_pos);
+	fclose(monitor.neighbor_time);
 }
 
 //TODO: we need also provide utility functions to analyze the simulation resutls!!!
@@ -856,36 +905,34 @@ static void plist_clear(void)
 
 #define fifo_is_full(f) ((f)->size - (f)->in + (f)->out == 0 ? true : false)
 
+#define fifo_test(f,s) \
+	do {	\
+		bool flag = false;	\
+		while(fifo_is_full(f)) {	\
+			if(flag) 	\
+				continue;	\
+			pthread_cond_signal(&(s));	\
+			flag = true;	\
+		}	\
+	}while(0)
+
 static void wm_flight_wb(void)
 {
 	unit_t i, id;
 	NODE *n;
-	bool sflag;
 	int p;
 	char *str;
 	for(i=0; i<monitor.fm_p; i++){
 		id = monitor.flight_m[i];	
 		n = &nlist[id];
-		sflag = false;
 		{
-			while(fifo_is_full(fb_queue)) {
-			//	printf("%d\n", __LINE__);
-				if(sflag) {
-			//		usleep(SLEEP_T);
-					continue;
-				}
-
-				pthread_cond_signal(&(monitor.f_req));
-				sflag = true;
-			}
-
+			fifo_test(fb_queue, monitor.f_req);
 			//convert flight into string format
 			p = fb_i;
 			str = fb[p];
 			str[0] = 0;
 			str += sprintf(str, "%ld,", id);
 			double_to_string(str, n->flight_D, WB_THRESHOLD);
-
 			//write to buffer
 			_fifo_put(fb_queue, fb[p]);
 
@@ -893,7 +940,6 @@ static void wm_flight_wb(void)
 		}
 		n->flight_p = 0;
 	}
-
 	monitor.fm_p = 0;
 //	printf("flight WB\n");
 }
@@ -903,32 +949,19 @@ static void wm_pos_wb(void)
 {
 	unit_t i, id;
 	NODE *n;
-	bool sflag;
 	int p;
 	char *str;
 	for(i=0; i<monitor.pom_p; i++) {
 		id = monitor.pos_m[i];
 		n = &nlist[id];
-		sflag = false;
 		{
-			while(fifo_is_full(pob_queue)) {
-			//	printf("%d\n", __LINE__);
-				if(sflag) {
-			//		usleep(SLEEP_T);
-					continue;
-				}
-
-				pthread_cond_signal(&(monitor.po_req));
-				sflag = true;
-			}
-
-			//convert flight into string format
+			fifo_test(pob_queue, monitor.po_req);
+			//convert visiting pos into string format
 			p = pob_i;
 			str = pob[p];
 			str[0] = 0;
 			str += sprintf(str, "%ld,", id);
 			int_to_string(str, n->pos_D, WB_THRESHOLD);
-
 			//write to buffer
 			_fifo_put(pob_queue, pob[p]);
 
@@ -936,7 +969,6 @@ static void wm_pos_wb(void)
 		}
 		n->pos_p = 0;
 	}
-
 	monitor.pom_p = 0;
 //	printf("pos WB\n");
 }
@@ -945,32 +977,19 @@ static void wm_pause_wb(void)
 {
 	unit_t i, id;
 	NODE *n;
-	bool sflag;
 	int p;
 	char *str;
 	for(i=0; i<monitor.pam_p; i++){
 		id = monitor.pause_m[i];
 		n = &nlist[id];
-		sflag = false;
 		{
-			while(fifo_is_full(pab_queue)) {
-			//	printf("%d\n", __LINE__);
-				if(sflag) {
-			//		usleep(SLEEP_T);
-					continue;
-				}
-
-				pthread_cond_signal(&(monitor.pa_req));
-				sflag = true;
-			}
-
-			//convert flight into string format
+			fifo_test(pab_queue, monitor.pa_req);
+			//convert pause time into string format
 			p = pab_i;
 			str = pab[p];
 			str[0] = 0;
 			str += sprintf(str, "%ld,", id);
 			int_to_string(str, n->pause_D, WB_THRESHOLD);
-
 			//write to buffer
 			_fifo_put(pab_queue, pab[p]);
 
@@ -978,7 +997,6 @@ static void wm_pause_wb(void)
 		}
 		n->pause_p = 0;
 	}
-
 	monitor.pam_p = 0;
 //	printf("pause WB\n");
 }
@@ -987,7 +1005,6 @@ static void wm_cneighbor_wb(void)
 {
 	unit_t i, id;
 	NODE *n;
-	bool sflag;
 	int p;
 	char *str;
 	for(i=0; i<monitor.cnm_p; i++) {
@@ -997,27 +1014,25 @@ static void wm_cneighbor_wb(void)
 		int j;
 		for(j=0; j<n->neighbor_p; j++) {
 			NEIGHBOR *tmp = &(n->neighbor_D[j]);
-			sflag = false;
 			{
-				while(fifo_is_full(nb_queue)) {
-					if(sflag) {
-			//			usleep(SLEEP_T);
-						continue;
-					}
-
-					pthread_cond_signal(&(monitor.neighbor_req));
-					sflag = true;
-				}
-
-				//convert flight into string format
+				fifo_test(nb_queue, monitor.neighbor_pos_req);
+				//convert meeting pos into string format
 				p = nb_i;
 				str = nb[p];
 				str[0] = 0;
 				str += sprintf(str, "%ld,%ld,", id, tmp->id);
 				int_to_string(str, tmp->meeting_pos, tmp->meeting_p);
-
 				//write to buffer
 				_fifo_put(nb_queue, nb[p]);
+
+				fifo_test(ntb_queue, monitor.neighbor_time_req);
+				//convert inter-contact time into string format
+				str = ntb[p];
+				str[0] = 0;
+				str += sprintf(str, "%ld,%ld,", id, tmp->id);
+				int_to_string(str, tmp->meeting_delay, tmp->meeting_p);
+				//write to buffer
+				_fifo_put(ntb_queue, ntb[p]);
 
 				nb_num++;
 			}
@@ -1025,21 +1040,19 @@ static void wm_cneighbor_wb(void)
 		}
 		n->neighbor_p = 0;
 	}
-
 	monitor.cnm_p = 0;
 }
+
 
 static void wm_neighbor_wb(void)
 {
 	unit_t i, id, nid;
 	NODE *n;
 	NEIGHBOR key, *res, tmp;
-	bool sflag;
 	int p;
 	char *str;
 
 	for(i=0; i<monitor.nm_p; i++) {
-		sflag = false;
 		id = monitor.neighbor_m[i].node_id;
 		nid = monitor.neighbor_m[i].neighbor_id;
 		n = &nlist[id];
@@ -1047,26 +1060,24 @@ static void wm_neighbor_wb(void)
 		res = bsearch(&key, n->neighbor_D, n->neighbor_p, sizeof(NEIGHBOR), cmp_nei);
 
 		{
-			while(fifo_is_full(nb_queue)) {
-			//	printf("%d\n", __LINE__);
-				if(sflag) {
-			//		usleep(SLEEP_T);
-					continue;
-				}
-
-				pthread_cond_signal(&(monitor.neighbor_req));
-				sflag = true;
-			}
-
-			//convert flight into string format
+			fifo_test(nb_queue, monitor.neighbor_pos_req);
+			//convert meeting pos into string format
 			p = nb_i;
 			str = nb[p];
 			str[0] = 0;
 			str += sprintf(str, "%ld,%ld,", id, res->id);
 			int_to_string(str, res->meeting_pos, WB_THRESHOLD);
-
 			//write to buffer
 			_fifo_put(nb_queue, nb[p]);
+			
+			fifo_test(ntb_queue, monitor.neighbor_time_req);
+			//convert inter-contact time into string format
+			str = ntb[p];
+			str[0] = 0;
+			str += sprintf(str, "%ld,%ld,", id, res->id);
+			int_to_string(str, res->meeting_delay, WB_THRESHOLD);
+			//write to buffer
+			_fifo_put(ntb_queue, ntb[p]);
 
 			nb_num++;
 		}
@@ -1080,7 +1091,6 @@ static void wm_neighbor_wb(void)
 		n->neighbor_p--;
 		qsort(n->neighbor_D, n->neighbor_p, sizeof(NEIGHBOR), cmp_nei);
 	}
-
 	monitor.nm_p = 0;
 //	printf("neighor WB\n");
 }
@@ -1104,7 +1114,8 @@ static void wm_neighbor_wb(void)
 		pthread_cond_signal(&(monitor.f_req));	\
 		pthread_cond_signal(&(monitor.po_req));	\
 		pthread_cond_signal(&(monitor.pa_req));	\
-		pthread_cond_signal(&(monitor.neighbor_req));	\
+		pthread_cond_signal(&(monitor.neighbor_pos_req));	\
+		pthread_cond_signal(&(monitor.neighbor_time_req));	\
 		sleep(1);	\
 	} while(0)
 

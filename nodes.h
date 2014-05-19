@@ -17,9 +17,13 @@ typedef enum node_status {
 typedef struct neighbor {
 	unit_t id;	//neighbor id
 
+	unit_t *meeting_delay;	//record the inter-contact meeting time
 	unit_t *meeting_pos;	//record all the meeting pos
+
 	unit_t meeting_p;
 	unit_t meeting_num;
+
+	unit_t r_timer;		//last time the two nodes meet
 } __attribute__ ((packed)) NEIGHBOR;
 
 typedef struct node {
@@ -104,10 +108,15 @@ typedef struct wb_monitor {
 	unit_t nm_p;
 
 	//neighbor wb
-	pthread_t neighbor_tid;
-	pthread_mutex_t neighbor_mtx;
-	pthread_cond_t neighbor_req;
-	FILE *neighbor;
+	pthread_t neighbor_pos_tid;
+	pthread_mutex_t neighbor_pos_mtx;
+	pthread_cond_t neighbor_pos_req;
+	FILE *neighbor_pos;
+
+	pthread_t neighbor_time_tid;
+	pthread_mutex_t neighbor_time_mtx;
+	pthread_cond_t neighbor_time_req;
+	FILE *neighbor_time;
 } WM;
 
 #endif

@@ -240,14 +240,22 @@ static unit_t init_fpos(unit_t id)
 
 			return res;
 		}
+		if(id_pos > id) {
+			nlist[id].status = EXITING;	//do not find this node record, put EXITING status
+			res = ftell(FP) - read;
+			fseek(FP, res, SEEK_SET);
+			id_pos--;
+			break;
+		}
 	}
-	printf("can not find fpos for node: %ld\n", id);
 }
 
 static void init_node(NODE *n, unit_t id)
 {
 	n->user_id = id;
 	n->fpos = init_fpos(id);
+	if(n->status == EXITING)	//this node does not exist...
+		return;
 	
 	array_needsize(false, NEIGHBOR, n->neighbor_D, n->neighbor_num, 10, array_zero_init);
 

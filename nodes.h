@@ -7,6 +7,8 @@
 
 typedef unsigned long unit_t;
 
+typedef void (*signal_fn) (int);
+
 typedef enum node_status {
 	UNINIT=0,
 	NEW,

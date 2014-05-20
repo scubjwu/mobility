@@ -6,6 +6,7 @@
 #include <stdbool.h>
 #include <math.h>
 #include <pthread.h>
+#include <signal.h>
 
 #include "nodes.h"
 #include "fifo.h"
@@ -110,10 +111,38 @@ static char *cmd_system(const char *cmd)
 	return res;
 }
 
+void BlockSignal(bool block, int signo)
+{
+	sigset_t set;
+	sigemptyset(&set);
+	sigaddset(&set, signo);
+	sigprocmask(block?SIG_BLOCK:SIG_UNBLOCK, &set, NULL);
+}
+
+signal_fn CatchSignal(int signo, signal_fn handler)
+{
+	struct sigaction act, oldact;
+
+	memset(&act, 0, sizeof(act));
+	act.sa_handler = handler;
+
+#ifdef SA_RESTART
+	if(signo != SIGALRM)
+		act.sa_flags |= SA_RESTART;
+#endif
+
+	sigemptyset(&act.sa_mask);
+	sigaddset(&act.sa_mask, signo);
+	sigaction(signo, &act, &oldact);
+
+	return oldact.sa_handler;
+}
+
 void *tf_wb(void *arg)
 {
 	fifo_data_t tmp;
 	size_t len;
+	BlockSignal(true, SIGUSR1);
 
 	for(;;) {
 		while(_fifo_get(fb_queue, &tmp) != 0) 
@@ -129,6 +158,7 @@ void *tpo_wb(void *arg)
 {
 	fifo_data_t tmp;
 	size_t len;
+	BlockSignal(true, SIGUSR1);
 
 	for(;;) {
 		while(_fifo_get(pob_queue, &tmp) != 0) 
@@ -144,6 +174,7 @@ void *tpa_wb(void *arg)
 {
 	fifo_data_t tmp;
 	size_t len;
+	BlockSignal(true, SIGUSR1);
 
 	for(;;) {
 		while(_fifo_get(pab_queue, &tmp) != 0) 
@@ -159,6 +190,7 @@ void *tnp_wb(void *arg)
 {
 	fifo_data_t tmp;
 	size_t len;
+	BlockSignal(true, SIGUSR1);
 
 	for(;;) {
 		while(_fifo_get(nb_queue, &tmp) != 0) 
@@ -174,6 +206,7 @@ void *tnt_wb(void *arg)
 {
 	fifo_data_t tmp;
 	size_t len;
+	BlockSignal(true, SIGUSR1);
 
 	for(;;) {
 		while(_fifo_get(ntb_queue, &tmp) != 0) 
@@ -1127,6 +1160,13 @@ static void wm_neighbor_wb(void)
 		sleep(1);	\
 	} while(0)
 
+static void print_runtime(int para)
+{
+	BlockSignal(true, SIGUSR1);
+	printf("runing time: %s\n", ctime(&timer));
+	BlockSignal(false, SIGUSR1);
+}
+
 int main(int argc, char *argv[])
 {
 	if(argc < 2) {
@@ -1137,6 +1177,9 @@ int main(int argc, char *argv[])
 	init_file(argv[1]);
 
 	init_struct(argv[1]);
+
+	BlockSignal(false, SIGUSR1);
+	CatchSignal(SIGUSR1, print_runtime);
 	
 //start to run
 	bool r_status = false;

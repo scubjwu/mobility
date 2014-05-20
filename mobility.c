@@ -596,7 +596,11 @@ static void neighbor_meeting_add(unit_t neighbor, NODE *n)
 	}
 
 	new->meeting_pos[new->meeting_p] = n->pos_id;
-	new->meeting_delay[new->meeting_p] = 0;	//alway to be 0 for the first time
+	if(new->r_timer == 0)
+		new->meeting_delay[new->meeting_p] = 0;	//alway to be 0 for the first time
+	else
+		new->meeting_delay[new->meeting_p] = timer - new->r_timer;
+
 	new->r_timer = timer;
 	new->meeting_p++;
 	

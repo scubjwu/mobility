@@ -16,7 +16,7 @@ all:
 	$(CC) $(CFLAGS) -o $(FILE_HANDLER) $(FSRC) $(LFALGS)
 
 debug:
-	$(CC) -g $(CFLAGS2) -o $(TARGET) $(SRC) $(LFLAGS1)
+	$(CC) -g $(CFLAGS2) -o $(TARGET) $(TSRC) $(LFLAGS1)
 
 clean:
 	rm $(TARGET), $(FILE_HANDLER)

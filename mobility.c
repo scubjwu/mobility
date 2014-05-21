@@ -138,84 +138,43 @@ signal_fn CatchSignal(int signo, signal_fn handler)
 	return oldact.sa_handler;
 }
 
+#define general_wb(fifo, req, mtx, file)	\
+	{	\
+		fifo_data_t tmp;	\
+		size_t len;	\
+		BlockSignal(true, SIGUSR1);	\
+		for(;;) {	\
+			while(_fifo_get((fifo), &tmp) != 0)	\
+				pthread_cond_wait(&(req), &(mtx));	\
+			len = strlen((char *)tmp);	\
+			if(fwrite(tmp, sizeof(char), len, (file)) != len && ferror(file))	\
+					perror("fwrite flight");	\
+		}	\
+	}
+
 void *tf_wb(void *arg)
 {
-	fifo_data_t tmp;
-	size_t len;
-	BlockSignal(true, SIGUSR1);
-
-	for(;;) {
-		while(_fifo_get(fb_queue, &tmp) != 0) 
-			pthread_cond_wait(&(monitor.f_req), &(monitor.f_mtx));
-
-		len = strlen((char *)tmp);
-		if(fwrite(tmp, sizeof(char), len, monitor.flight) != len && ferror(monitor.flight)) 
-				perror("fwrite flight");
-	}
+	general_wb(fb_queue, monitor.f_req, monitor.f_mtx, monitor.flight);
 }
 
 void *tpo_wb(void *arg)
 {
-	fifo_data_t tmp;
-	size_t len;
-	BlockSignal(true, SIGUSR1);
-
-	for(;;) {
-		while(_fifo_get(pob_queue, &tmp) != 0) 
-			pthread_cond_wait(&(monitor.po_req), &(monitor.po_mtx));
-
-		len = strlen((char *)tmp);
-		if(fwrite(tmp, sizeof(char), len, monitor.pos) != len && ferror(monitor.pos))
-			perror("fwrite pos");
-	}
+	general_wb(pob_queue, monitor.po_req, monitor.po_mtx, monitor.pos);
 }
 
 void *tpa_wb(void *arg)
 {
-	fifo_data_t tmp;
-	size_t len;
-	BlockSignal(true, SIGUSR1);
-
-	for(;;) {
-		while(_fifo_get(pab_queue, &tmp) != 0) 
-			pthread_cond_wait(&(monitor.pa_req), &(monitor.pa_mtx));
-
-		len = strlen((char *)tmp);
-		if(fwrite(tmp, sizeof(char), len, monitor.pause) != len && ferror(monitor.pause))
-			perror("fwrite pause");
-	}
+	general_wb(pab_queue, monitor.pa_req, monitor.pa_mtx, monitor.pause);
 }
 
 void *tnp_wb(void *arg)
 {
-	fifo_data_t tmp;
-	size_t len;
-	BlockSignal(true, SIGUSR1);
-
-	for(;;) {
-		while(_fifo_get(nb_queue, &tmp) != 0) 
-			pthread_cond_wait(&(monitor.neighbor_pos_req), &(monitor.neighbor_pos_mtx));
-
-		len = strlen((char *)tmp);
-		if(fwrite(tmp, sizeof(char), len, monitor.neighbor_pos) != len && ferror(monitor.neighbor_pos))
-			perror("fwirte neighbor pos");
-	}
+	general_wb(nb_queue, monitor.neighbor_pos_req, monitor.neighbor_pos_mtx, monitor.neighbor_pos);
 }
 
 void *tnt_wb(void *arg)
 {
-	fifo_data_t tmp;
-	size_t len;
-	BlockSignal(true, SIGUSR1);
-
-	for(;;) {
-		while(_fifo_get(ntb_queue, &tmp) != 0) 
-			pthread_cond_wait(&(monitor.neighbor_time_req), &(monitor.neighbor_time_mtx));
-
-		len = strlen((char *)tmp);
-		if(fwrite(tmp, sizeof(char), len, monitor.neighbor_time) != len && ferror(monitor.neighbor_time))
-			perror("fwirte neighbor time");
-	}
+	general_wb(ntb_queue, monitor.neighbor_time_req, monitor.neighbor_time_mtx, monitor.neighbor_time);
 }
 
 static void init_file(const char *file)
@@ -346,6 +305,15 @@ static void init_monitor(void)
 	pthread_create(&(monitor.neighbor_time_tid), NULL, tnt_wb, NULL);
 }
 
+static void init_fifo(void)
+{
+	fb_queue = fifo_alloc(QUEUE_LEN);
+	pob_queue = fifo_alloc(QUEUE_LEN);
+	pab_queue = fifo_alloc(QUEUE_LEN);
+	nb_queue = fifo_alloc(QUEUE_LEN);
+	ntb_queue = fifo_alloc(QUEUE_LEN);
+}
+
 static void init_struct(const char *file)
 {
 	char cmd[CMDLEN] = {0};
@@ -378,31 +346,32 @@ static void init_struct(const char *file)
 	}
 
 	//init fifo first
-	fb_queue = fifo_alloc(QUEUE_LEN);
-	pob_queue = fifo_alloc(QUEUE_LEN);
-	pab_queue = fifo_alloc(QUEUE_LEN);
-	nb_queue = fifo_alloc(QUEUE_LEN);
-	ntb_queue = fifo_alloc(QUEUE_LEN);
+	init_fifo();
 
 	init_wb();
 
 	init_monitor();
 }
 
+#define _free(x) \
+	{	\
+		if((x))	free((x));	\
+	}
+
 static void free_node(NODE *n)
 {
 	if(n) {
-		free(n->pos_D);
-		free(n->flight_D);
-		free(n->pause_D);
+		_free(n->pos_D);
+		_free(n->flight_D);
+		_free(n->pause_D);
 
 		unit_t i;
 		for(i=0; i<n->neighbor_num; i++) {
-			free(n->neighbor_D[i].meeting_pos);
-			free(n->neighbor_D[i].meeting_delay);
+			_free(n->neighbor_D[i].meeting_pos);
+			_free(n->neighbor_D[i].meeting_delay);
 		}
 			
-		free(n->neighbor_D);
+		_free(n->neighbor_D);
 	}
 }
 
@@ -440,7 +409,7 @@ static void free_struct(void)
 
 	if(plist) {
 		for(i=0; i<pos_num; i++) {
-			free(plist[i].node_id);
+			_free(plist[i].node_id);
 		}
 		free(plist);
 	}

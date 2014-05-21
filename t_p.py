@@ -39,8 +39,8 @@ class listener(StreamListener):
                 xy = [(box[0][0] + box[2][0])/2, (box[0][1] + box[2][1])/2]
                 pass
 
-            global db
-            db.write(status.user.id_str + "," + str(xy[1]) + "," + str(xy[0]) + "," + status.created_at.strftime("%Y-%m-%d %H:%M:%S") + "," + status.user.name.encode("ascii", "ignore") + "\r\n");
+            #db.write(status.user.id_str + "," + str(xy[1]) + "," + str(xy[0]) + "," + status.created_at.strftime("%Y-%m-%d %H:%M:%S") + "," + status.user.name.encode("ascii", "ignore") + "\r\n");
+            db.write(status.user.id_str + "," + str(xy[1]) + "," + str(xy[0]) + "," + status.created_at.strftime("%Y-%m-%d %H:%M:%S") + "\r\n");
 
 	def on_error(self, status):
 		print "error ", status
@@ -49,16 +49,17 @@ def main():
     auth = OAuthHandler(ckey, csecret)
     auth.set_access_token(atoken, asecret)
     twitterStream = Stream(auth, listener())
-    try:
-        print "start..."
-        twitterStream.filter(locations=[-125,30,-113,40])
-    except KeyboardInterrupt:
-        global db
-        db.close()
-        print "stop..."
-    except Exception, e:
-        print "hang..."
-        time.sleep(random.randint(60,62));
+    while True:
+        try:
+            print "start..."
+            twitterStream.filter(locations=[-125,30,-113,40])
+        except KeyboardInterrupt:
+            db.close()
+            print "stop..."
+            exit(0)
+        except Exception, e:
+            print "hang..."
+            time.sleep(random.randint(60,62));
 
 if __name__ == '__main__':
     main()

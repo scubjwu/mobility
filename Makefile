@@ -13,7 +13,7 @@ FILE_HANDLER = file_handle
 
 all:
 	$(CC) $(CFLAGS) -o $(TARGET) $(TSRC) $(LFLAGS)
-	$(CC) $(CFLAGS) -o $(FILE_HANDLER) $(FSRC) $(LFALGS)
+	$(CC) $(CFLAGS) -o $(FILE_HANDLER) $(FSRC) -lhoard
 
 debug:
 	$(CC) -g $(CFLAGS2) -o $(TARGET) $(TSRC) $(LFLAGS1)

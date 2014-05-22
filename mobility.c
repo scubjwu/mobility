@@ -236,7 +236,7 @@ static unit_t init_fpos(unit_t id)
 			nlist[id].status = EXITING;	//do not find this node record, put EXITING status
 			res = ftell(FP) - read;
 			fseek(FP, res, SEEK_SET);
-			id_pos--;
+			id_pos = id;
 			break;
 		}
 	}

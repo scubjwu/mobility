@@ -115,26 +115,27 @@ int main(int argc, char *argv[])
 	size_t len = 0;
 	int hash = atoi(argv[3]);
 
-	unsigned long user_id, pos_id;
-	double x, y;
+	unsigned long user_id, pos_id = 0;
+	double x = 0, y = 0;
 	char time[32] = {0};
-	char time1[32] = {0};
-	char time2[32] = {0};
 	char hash_id[64] = {0};
 
 	array_needsize(POOL, id_pool, pool_num, 10240, array_zero_init);
 
 	while((read = getline(&line, &len, fr)) != -1) {
-		if(hash == 0)
+		if(hash == 0) {
 			sscanf(line, "%ld %s %lf %lf %ld", &user_id, time, &x, &y, &pos_id);
+			if(expect_false(x == 0 || y == 0 || pos_id == 0))
+				goto RESET;
+
+			pos_id = id_get(pos_id);
+		}
 		else {
-		//	sscanf(line, "%ld %[^T]T%[^Z]Z %lf %lf %s", &user_id, time1, time2, &x, &y, hash_id);
 			sscanf(line, "%ld %s %lf %lf %s", &user_id, time, &x, &y, hash_id);
 			if(expect_false(x == 0 || y == 0 || hash_id[0] == 0))
 				goto RESET;
 
 			pos_id = id_get(BKDRHash(hash_id));
-		//	sprintf(time, "%s %s", time1, time2);
 		}
 		
 		fprintf(fw, "%ld,%lf,%lf,%s,%ld\r\n", user_id, x, y, time, pos_id);
@@ -142,9 +143,8 @@ RESET:
 		x = 0;
 		y = 0;
 		time[0] = 0;
-	//	time1[0] = 0;
-	//	time2[0] = 0;
 		hash_id[0] = 0;
+		pos_id = 0;
 	}
 
 	fclose(fr);

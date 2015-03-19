@@ -575,10 +575,10 @@ static void neighbor_meeting_add(unit_t neighbor, NODE *n)
 	}
 
 	new->meeting_pos[new->meeting_p] = n->pos_id;
-	if(new->r_timer == 0)
+//	if(new->r_timer == 0)
 		new->meeting_delay[new->meeting_p] = 0;	//alway to be 0 for the first time
-	else
-		new->meeting_delay[new->meeting_p] = timer - new->r_timer;
+//	else
+//		new->meeting_delay[new->meeting_p] = timer - new->r_timer;
 
 	new->r_timer = timer;
 	new->meeting_p++;
@@ -661,6 +661,21 @@ NEXT:
 		}
 
 		if(time <= timer && n_time > timer) {
+		// not init yet...
+			if(n->status == UNINIT) {
+				n->status = NEW;
+				n->pos_id = pos;
+				n->pos_x = x;
+				n->pos_y = y;
+				n->time = time;
+				n->next_time = n_time;
+				n->fpos = ftell(FP) - read;
+
+				node_pos_update(i);
+				pos_update(n);
+				return;
+			}
+
 			if(n->pos_id == pos) {
 			//not moving
 				n->status = STAYING;

@@ -21,6 +21,7 @@
 #define TIME_FORMAT	"%Y-%m-%d %H:%M:%S"
 #define LINE_FORMAT	"%ld,%lf,%lf,%[^,],%ld"
 
+#define UTC_TIME
 
 static NODE *nlist;
 static POS *plist;
@@ -197,6 +198,15 @@ static inline void parse_line(const char *line, unit_t *id, double *x, double *y
 	char tmp[32] = {0};
 	struct tm t = {0};
 	sscanf(line, LINE_FORMAT, id, x, y, tmp, pos_id);
+
+#ifdef UTC_TIME
+	char date1[32] = {0};
+	char date2[32] = {0};
+	sscanf(tmp, "%[0-9,-]T%[0-9,:]Z", date1, date2);
+	tmp[0] = 0;
+	sprintf(tmp, "%s %s", date1, date2);
+#endif
+
 	strptime(tmp, TIME_FORMAT, &t);
 	*time = mktime(&t);
 }

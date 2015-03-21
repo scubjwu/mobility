@@ -10,6 +10,7 @@
 
 #include "nodes.h"
 #include "fifo.h"
+#include "flood_trans.h"
 
 #define CMDLEN	512
 #define LINELEN	512
@@ -21,13 +22,13 @@
 #define TIME_FORMAT	"%Y-%m-%d %H:%M:%S"
 #define LINE_FORMAT	"%ld,%lf,%lf,%[^,],%ld"
 
-#define UTC_TIME
+NODE *nlist;
+DATA_LST MSG_LST[MAX_MSGLST] = {0};
+time_t timer;
 
-static NODE *nlist;
 static POS *plist;
 static unit_t nodes_num;
 static unit_t pos_num;
-static time_t timer;
 static FILE *FP;
 static unit_t running_node;
 static char *line = NULL;
@@ -51,17 +52,12 @@ static FIFO *pab_queue;
 static FIFO *nb_queue;
 static FIFO *ntb_queue;
 
+static unit_t MSG_ID = 0;
+
 #define fb_i	(fb_num & (WB_THRESHOLD - 1))
 #define pob_i	(pob_num & (WB_THRESHOLD - 1))
 #define pab_i	(pab_num & (WB_THRESHOLD - 1))
 #define nb_i	(nb_num & (WB_THRESHOLD - 1))
-
-#define array_needsize(limit, type, base, cur, cnt, init)	\
-	if((cnt) > (cur)) {	\
-		unit_t ocur_ = (cur);	\
-		(base) = (type *)array_realloc(sizeof(type), (base), &(cur), (cnt), (limit));	\
-		init((base), (ocur_), (cur), sizeof(type));	\
-	}
 
 static inline unit_t array_nextsize(size_t elem, unit_t cur, unit_t cnt)
 {
@@ -82,7 +78,7 @@ static inline unit_t array_nextsize(size_t elem, unit_t cur, unit_t cnt)
 }
 
 //elem is the size of individual element; *cur is the current array size; cnt is the new size
-static void* __attribute__((__noinline__)) array_realloc(size_t elem, void *base, unit_t *cur, unit_t cnt, bool limit)
+void* __attribute__((__noinline__)) array_realloc(size_t elem, void *base, unit_t *cur, unit_t cnt, bool limit)
 {
 	*cur = array_nextsize(elem, *cur, cnt);
 	if(limit)
@@ -91,7 +87,7 @@ static void* __attribute__((__noinline__)) array_realloc(size_t elem, void *base
 	return base;
 }
 
-static inline void array_zero_init(void *p, size_t op, size_t np, size_t elem)
+inline void array_zero_init(void *p, size_t op, size_t np, size_t elem)
 {
 	memset(p + (op * elem), 0, (np - op) * elem);
 }
@@ -99,10 +95,11 @@ static inline void array_zero_init(void *p, size_t op, size_t np, size_t elem)
 static char *cmd_system(const char *cmd)
 {
 	char *res = "";
-	char buf[BUFLEN] = {0};
+	static char buf[BUFLEN];
 	FILE *f;
 	
 	f = popen(cmd, "r");
+	memset(buf, 0, BUFLEN * sizeof(char));
 	while(fgets(buf, BUFLEN-1,f) != NULL)
 		res = buf;
 
@@ -137,6 +134,22 @@ signal_fn CatchSignal(int signo, signal_fn handler)
 	sigaction(signo, &act, &oldact);
 
 	return oldact.sa_handler;
+}
+
+static time_t convert_time(char *str)
+{
+	struct tm t = {0};
+
+#ifdef UTC_TIME
+	char date1[32] = {0};
+	char date2[32] = {0};
+	sscanf(str, "%[0-9,-]T%[0-9,:]Z", date1, date2);
+	str[0] = 0;
+	sprintf(str, "%s %s", date1, date2);
+#endif
+
+	strptime(str, TIME_FORMAT, &t);
+	return mktime(&t);
 }
 
 #define general_wb(fifo, req, mtx, file)	\
@@ -180,7 +193,7 @@ void *tnt_wb(void *arg)
 
 static void init_file(const char *file)
 {
-#define CMD_FORMAT	"sort -t , -k1,1n -k4,4 %s >> ./_tmp; mv ./_tmp %s"
+#define CMD_FORMAT	"sort -s -t , -k1,1n -k4,4 %s -o ./_tmp; mv ./_tmp %s"
 	char cmd[CMDLEN] = {0};
 	sprintf(cmd, CMD_FORMAT, file, file);
 	cmd_system(cmd);
@@ -199,16 +212,7 @@ static inline void parse_line(const char *line, unit_t *id, double *x, double *y
 	struct tm t = {0};
 	sscanf(line, LINE_FORMAT, id, x, y, tmp, pos_id);
 
-#ifdef UTC_TIME
-	char date1[32] = {0};
-	char date2[32] = {0};
-	sscanf(tmp, "%[0-9,-]T%[0-9,:]Z", date1, date2);
-	tmp[0] = 0;
-	sprintf(tmp, "%s %s", date1, date2);
-#endif
-
-	strptime(tmp, TIME_FORMAT, &t);
-	*time = mktime(&t);
+	*time = convert_time(tmp);
 }
 
 static unit_t init_fpos(unit_t id)
@@ -269,6 +273,8 @@ static void init_node(NODE *n, unit_t id)
 
 	//wb if num of pause bigger than WB_THRESHOLD
 	array_needsize(true, unit_t, n->pause_D, n->pause_num, 10, array_zero_init);
+
+	array_needsize(false, MSG, n->buffer, n->buffer_num, 10, array_zero_init);
 }
 
 static inline void init_pos(POS *p)
@@ -332,15 +338,14 @@ static void init_struct(const char *file)
 	printf("node: %ld\n", nodes_num);
 
 	cmd[0] = 0;
-	sprintf(cmd, "sort -t , -k5,5nr %s | head -1 | cut -d , -f 5", file);
+	sprintf(cmd, "sort -t, -k5,5nr %s | head -1 | cut -d , -f 5", file);
 	pos_num = atol(cmd_system(cmd)) + 1;
 	printf("pos: %ld\n", pos_num);
 
 	cmd[0] = 0;
 	struct tm time = {0};
 	sprintf(cmd, "sort -t, -k4,4 %s | head -1 | cut -d , -f 4", file);
-	strptime(cmd_system(cmd), TIME_FORMAT, &time);
-	timer = mktime(&time);
+	timer = convert_time(cmd_system(cmd));
 	printf("time: %ld\n", timer);
 
 	nlist = (NODE *)calloc(nodes_num, sizeof(NODE));
@@ -382,6 +387,12 @@ static void free_node(NODE *n)
 		}
 			
 		_free(n->neighbor_D);
+
+		for(i=0; i<n->buffer_num; i++) {
+			_free(n->buffer[i].dpath);
+			_free(n->buffer[i].dst_set);
+		}
+		_free(n->buffer);
 	}
 }
 
@@ -607,6 +618,35 @@ static inline double distance_cal(double x1, double y1, double x2, double y2)
 	return s;
 }
 
+static void node_make_msg(NODE *n)
+{
+//generate the new msg for data dissemination
+#define SRC	0
+	if(MSG_ID == MAX_MSGLST)
+		return;
+
+	if(n->user_id != SRC)
+		return;
+
+	int i;
+	if(n->buffer_p == n->buffer_num)
+		array_needsize(false, MSG, n->buffer, n->buffer_num, n->buffer_num + 1, array_zero_init);
+	
+	MSG *new_msg = &(n->buffer[n->buffer_p]);
+	msg_generate(new_msg, n->user_id, timer, 0, MSG_ID);
+
+	MSG_LST[MSG_ID].id = MSG_ID;
+	MSG_LST[MSG_ID].dst_len = new_msg->set_len;
+	MSG_LST[MSG_ID].dst = (DATA *)calloc(new_msg->set_len, sizeof(DATA));
+
+	for(i=0; i<new_msg->set_len; i++)
+		MSG_LST[MSG_ID].dst[i].id = new_msg->dst_set[i];
+
+	MSG_ID++;
+	n->buffer_p++;
+#undef SRC
+}
+
 static void get_node_info(unit_t i)
 {
 	NODE *n = &nlist[i];
@@ -624,8 +664,11 @@ static void get_node_info(unit_t i)
 		if(n->status == UNINIT) {
 			n->status = NEW;
 			node_pos_update(i);
+
+			node_make_msg(n);
+
 		}
-		if(n->status == NEW)
+		else if(n->status == NEW)
 			n->status = STAYING;
 
 		pos_update(n);
@@ -673,6 +716,8 @@ NEXT:
 
 				node_pos_update(i);
 				pos_update(n);
+
+				node_make_msg(n);
 				return;
 			}
 
@@ -702,6 +747,7 @@ NEXT:
 			node_flight_update(i, flight);
 			node_pause_update(i, pause_time);
 
+			node_make_msg(n);
 			pos_update(n);
 		}
 	}
@@ -887,13 +933,13 @@ static void wm_neighbor_add(unit_t node_id, unit_t neighbor_id)
 }
 
 //update node id's neighbors
-static void node_neighbor_update(unit_t id, POS *p)
+static void node_neighbor_update(unit_t index, POS *p)
 {
 	unit_t i;
-	NODE *n = &nlist[id];
+	NODE *n = &nlist[p->node_id[index]];
 
 	for(i=0; i<p->node_p; i++) {
-		if(id >= p->node_id[i] ||
+		if(index >= i ||
 			(n->status == STAYING &&
 			 nlist[p->node_id[i]].status == STAYING))
 			continue;
@@ -904,7 +950,7 @@ static void node_neighbor_update(unit_t id, POS *p)
 		if(res) {	//update the neighbor record
 			neighbor_meeting_update(res, n->pos_id);
 			if(res->meeting_p >= WB_THRESHOLD)
-				wm_neighbor_add(id, res->id);
+				wm_neighbor_add(p->node_id[index], res->id);
 		}
 		else {	//new neighbor
 			neighbor_meeting_add(/*neighbor*/p->node_id[i], n);
@@ -926,11 +972,12 @@ static void node_update(unit_t id)
 	//update the neighbors of nodes on this pos
 	unit_t i;
 	for(i=0; i<p->node_p; i++) {
-		node_neighbor_update(/*which node*/p->node_id[i], /*pos info*/p);
+		node_neighbor_update(/*index of which node on this pos*/i, /*pos info*/p);
 	}
 	p->update = true;
 
-	//TODO: add data transmition function here...
+	//add data transmition function here...
+	data_trans(&nlist[id], p);
 }
 
 static void plist_clear(void)
@@ -1165,6 +1212,48 @@ static void print_runtime(int para)
 	BlockSignal(false, SIGUSR1);
 }
 
+static void msg_status_update(DATA_LST *d)
+{
+	int i;
+	for(i=0; i<d->dst_len; i++) {
+		if(d->dst[i].status == false)
+			return;
+	}
+
+	d->deliver = true;
+}
+
+static void wm_msg_wb(void)
+{
+	FILE *fp = fopen("./msg_deliver.csv", "w");
+	char path_str[WB_BUFFLEN] = {0};
+	char *str;
+	
+	int i;
+	for(i=0; i<MSG_ID; i++) {
+		DATA_LST *tmp = &MSG_LST[i];
+		fprintf(fp, "id, deliver, copy\r\n");
+		fprintf(fp, "%ld,%d,%ld\r\n", tmp->id, tmp->deliver, tmp->copy);
+		int j;
+		for(j=0; j<tmp->dst_len;j++) {
+			DATA *tmp1 = &(tmp->dst[j]);
+			fprintf(fp, "dst,status,delay,hops\r\n");
+			fprintf(fp, "%ld,%d,%ld,%ld\r\n", tmp1->id, tmp1->status, tmp1->delay, tmp1->hops);
+			if(tmp1->status) {
+				fprintf(fp, "path:\r\n");
+				str = path_str;
+				str[0] = 0;
+				int_to_string(str, tmp1->path, tmp1->hops);
+				fwrite(path_str, sizeof(char), strlen(path_str), fp);
+			}
+			_free(tmp1->path);
+		}
+		_free(tmp->dst);
+	}
+	
+	fclose(fp);
+}
+
 int main(int argc, char *argv[])
 {
 	if(argc < 2) {
@@ -1207,10 +1296,18 @@ int main(int argc, char *argv[])
 
 		//reset plist very time
 		plist_clear();
+
+		//update the msg status
+		for(i=0; i<MSG_ID; i++) {
+			DATA_LST *tmp = &MSG_LST[i];
+			msg_status_update(tmp);
+		}
 	}
 
 	free_struct();
 	fclose(FP);
+	
+	wm_msg_wb();
 
 	return 0;
 }

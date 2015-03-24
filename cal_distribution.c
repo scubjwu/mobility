@@ -22,9 +22,9 @@ static void distribution_wb(double *array, int len, double s, int l, FILE *fp)
 	}
 }
 
-void distribution_cmp(FILE *in, FILE *out, int l)
+void distribution_cmp(FILE *in, FILE *out, double start, int l)
 {
-	double start = 2.;
+	double s = start;
 	int total = 0;
 	double *probability;
 	int cur = 0;
@@ -58,7 +58,7 @@ void distribution_cmp(FILE *in, FILE *out, int l)
 	for(i=0; i<cur; i++) 
 		probability[i] /= (double)total;
 
-	distribution_wb(probability, cur, 2, l, out);
+	distribution_wb(probability, cur, s, l, out);
 
 	fclose(in);
 	free(line);
@@ -68,19 +68,20 @@ void distribution_cmp(FILE *in, FILE *out, int l)
 int main(int argc, char *argv[])
 {
 	/*
-	 *	input file + array len + output file
+	 *	input file + + start value + array len + output file
 	 * */
 
-	if(argc != 4) {
+	if(argc != 5) {
 		printf("wrong usage\n");	
 		exit(1);
 	}
 
 	FILE *fin = fopen(argv[1], "r");
-	FILE *fout = fopen(argv[3], "w");
-	int len = atoi(argv[2]);
+	FILE *fout = fopen(argv[4], "w");
+	int len = atoi(argv[3]);
+	int s = atoi(argv[2]);
 
-	distribution_cmp(fin, fout, len);
+	distribution_cmp(fin, fout, (double)s, len);
 
 	return 0;
 }

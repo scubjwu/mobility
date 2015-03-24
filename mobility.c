@@ -632,6 +632,7 @@ static void node_make_msg(NODE *n)
 {
 //generate the new msg for data dissemination
 #define SRC	0
+#define MAX_HOPS	2
 	if(MSG_ID == MAX_MSGLST)
 		return;
 
@@ -643,7 +644,7 @@ static void node_make_msg(NODE *n)
 		array_needsize(false, MSG, n->buffer, n->buffer_num, n->buffer_num + 1, array_zero_init);
 	
 	MSG *new_msg = &(n->buffer[n->buffer_p]);
-	msg_generate(new_msg, n->user_id, timer, 0, MSG_ID);
+	msg_generate(new_msg, n->user_id, timer, MAX_HOPS, MSG_ID);
 
 	MSG_LST[MSG_ID].id = MSG_ID;
 	MSG_LST[MSG_ID].dst_len = new_msg->set_len;
@@ -654,6 +655,7 @@ static void node_make_msg(NODE *n)
 
 	MSG_ID++;
 	n->buffer_p++;
+#undef MAX_HOPS
 #undef SRC
 }
 

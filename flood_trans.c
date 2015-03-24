@@ -172,6 +172,9 @@ static void msg_deliver(MSG *m, NODE *n)
 		
 		return;
 	}
+
+	if(m->max_hops != 0 && m->hopc + 1 > m->max_hops)
+		return;
 	
 	for(i=0; i<n->buffer_p; i++) {
 		if(m->id == n->buffer[i].id)

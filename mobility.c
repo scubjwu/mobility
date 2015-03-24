@@ -632,7 +632,11 @@ static void node_make_msg(NODE *n)
 {
 //generate the new msg for data dissemination
 #define SRC	0
-#define MAX_HOPS	2
+/*
+ * MAX_HOPS = 3 single copy
+ * MAX_HOPS > 3 multiple copies
+ * */
+#define MAX_HOPS	0
 	if(MSG_ID == MAX_MSGLST)
 		return;
 

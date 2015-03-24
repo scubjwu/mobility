@@ -138,6 +138,11 @@ static void msg_path_wb(unit_t dst, MSG *m)
 	fprintf(fmulti_path, "dst,status,delay,hops\r\n");
 	fprintf(fmulti_path, "%ld,%d,%ld,%ld\r\n", dst, 1, timer - m->time, m->hopc + 1);
 	fprintf(fmulti_path, "path:\r\n");
+
+	if(m->hopc == m->hops)
+		m->dpath = (unit_t *)realloc(m->dpath, (m->hops + 1) * sizeof(unit_t));
+	m->dpath[m->hopc] = dst;
+
 	str = path_str;
 	str[0] = 0;
 	int_to_string(str, m->dpath, m->hopc + 1);
@@ -173,7 +178,7 @@ static void msg_deliver(MSG *m, NODE *n)
 		return;
 	}
 
-	if(m->max_hops != 0 && m->hopc + 1 > m->max_hops)
+	if(m->max_hops != 0 && m->hopc + 1 >= m->max_hops)
 		return;
 	
 	for(i=0; i<n->buffer_p; i++) {

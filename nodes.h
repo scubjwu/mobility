@@ -8,6 +8,7 @@
 #define MAX_MSGLST	10
 
 #define UTC_TIME
+//#define MULTICAST
 
 typedef unsigned long unit_t;
 

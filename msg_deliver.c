@@ -74,8 +74,10 @@ int main(int argc, char *argv[])
 			int dst, status, d, h;
 			getline(&line, &len, fin);
 			sscanf(line, "%d,%d,%d,%d", &dst, &status, &d, &h);
-			if(status == 0)
+			if(status == 0) {
+				printf("%d\n", dst);
 				continue;
+			}
 			
 			delay[cnt] += d;
 			hops[cnt] += h;

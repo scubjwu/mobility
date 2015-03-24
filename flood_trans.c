@@ -11,6 +11,7 @@
 extern DATA_LST MSG_LST[MAX_MSGLST];
 extern NODE *nlist;
 extern time_t timer;
+extern FILE *fmulti_path;
 
 static bool check_node_id(FILE *fp, unit_t id)
 {
@@ -120,6 +121,29 @@ static bool check_dst(unit_t id, MSG *m)
 	return false;
 }
 
+static void int_to_string(char *str, const unit_t *array, int len)
+{
+	int i;
+	for(i=0; i<len-1; i++)
+		str += sprintf(str, "%ld,", array[i]);
+
+	sprintf(str, "%ld\r\n", array[i]);
+}
+
+static void msg_path_wb(unit_t dst, MSG *m)
+{
+	static char path_str[WB_BUFFLEN] = {0};
+	char *str;
+
+	fprintf(fmulti_path, "dst,status,delay,hops\r\n");
+	fprintf(fmulti_path, "%ld,%d,%ld,%ld\r\n", dst, 1, timer - m->time, m->hopc + 1);
+	fprintf(fmulti_path, "path:\r\n");
+	str = path_str;
+	str[0] = 0;
+	int_to_string(str, m->dpath, m->hopc + 1);
+	fwrite(path_str, sizeof(char), strlen(path_str), fmulti_path);
+}
+
 static void msg_deliver(MSG *m, NODE *n)
 {
 	int i;
@@ -141,6 +165,10 @@ static void msg_deliver(MSG *m, NODE *n)
 				break;
 			}
 		}
+
+#ifndef MULTICAST
+		msg_path_wb(n->user_id,m);
+#endif
 		
 		return;
 	}
@@ -178,6 +206,7 @@ static void data_forward(NODE *src, NODE *dst)
 	unit_t _buffer_p = src->buffer_p;
 	MSG *m = NULL;
 	
+#ifdef MULTICAST
 	for(i=0; i<src->buffer_p; i++) {
 		if(flag)
 			i--;
@@ -205,6 +234,13 @@ static void data_forward(NODE *src, NODE *dst)
 		else 
 			msg_deliver(m, dst);
 	}
+#else
+	for(i=0; i<src->buffer_p; i++) {
+		m = &(src->buffer[i]);
+		msg_deliver(m, dst);
+	}
+
+#endif
 }
 
 static void msg_exchange(NODE *n1, NODE *n2)

@@ -25,6 +25,7 @@
 NODE *nlist;
 DATA_LST MSG_LST[MAX_MSGLST] = {0};
 time_t timer;
+FILE *fmulti_path;
 
 static POS *plist;
 static unit_t nodes_num;
@@ -203,6 +204,15 @@ static void init_file(const char *file)
 		printf("trace file failed to open");
 		exit(1);
 	}
+
+#ifndef MULTICAST
+	fmulti_path = fopen("Indiv_sim.csv", "w");
+	if(fmulti_path == NULL) {
+		printf("fail to create Indiv simulation log file");
+		exit(1);
+	}
+#endif
+
 #undef CMD_FORMAT
 }
 
@@ -1306,6 +1316,9 @@ int main(int argc, char *argv[])
 
 	free_struct();
 	fclose(FP);
+#ifndef MULTICAST
+	fclose(fmulti_path);
+#endif
 	
 	wm_msg_wb();
 

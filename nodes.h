@@ -1,18 +1,12 @@
 #ifndef _NODES_H
 #define _NODES_H
 
-#define WB_THRESHOLD	256	//power of 2!
 #define WB_BUFFLEN	2000
 #define QUEUE_LEN	50
 
 #define MAX_MSGLST	10
 
-#define UTC_TIME
 //#define MULTICAST
-
-typedef unsigned long unit_t;
-
-typedef void (*signal_fn) (int);
 
 typedef enum node_status {
 	UNINIT=0,
@@ -159,15 +153,5 @@ typedef struct wb_monitor {
 	pthread_cond_t neighbor_time_req;
 	FILE *neighbor_time;
 } WM;
-
-void* __attribute__((__noinline__)) array_realloc(size_t elem, void *base, unit_t *cur, unit_t cnt, bool limit);
-inline void array_zero_init(void *p, size_t op, size_t np, size_t elem);
-
-#define array_needsize(limit, type, base, cur, cnt, init)	\
-	if((cnt) > (cur)) {	\
-		unit_t ocur_ = (cur);	\
-		(base) = (type *)array_realloc(sizeof(type), (base), &(cur), (cnt), (limit));	\
-		init((base), (ocur_), (cur), sizeof(type));	\
-	}
 
 #endif

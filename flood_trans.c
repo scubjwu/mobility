@@ -3,6 +3,8 @@
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
+
+#include "common.h"
 #include "nodes.h"
 
 #define RELATION_FILE	"./gowalla_edges.txt"
@@ -119,15 +121,6 @@ static bool check_dst(unit_t id, MSG *m)
 			return true;
 
 	return false;
-}
-
-static void int_to_string(char *str, const unit_t *array, int len)
-{
-	int i;
-	for(i=0; i<len-1; i++)
-		str += sprintf(str, "%ld,", array[i]);
-
-	sprintf(str, "%ld\r\n", array[i]);
 }
 
 static void msg_path_wb(unit_t dst, MSG *m)

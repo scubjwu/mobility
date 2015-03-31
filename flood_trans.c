@@ -10,6 +10,9 @@
 #define RELATION_FILE	"./gowalla_edges.txt"
 #define NODE_ID_FILE	"./node.id"
 
+#define SIMPLE_INFECT
+#define MAX_COPY	-1
+
 extern DATA_LST MSG_LST[MAX_MSGLST];
 extern NODE *nlist;
 extern time_t timer;
@@ -50,6 +53,9 @@ void msg_generate(MSG *new, unit_t src, time_t time, unit_t max_hops, unit_t msg
 	new->src = src;
 	new->time = time;
 	new->max_hops = max_hops;
+	new->status = 0;
+	new->copy = MAX_COPY;
+	new->cnt = 0;
 	new->id = msg_id;
 	new->dpath = (unit_t *)calloc(10, sizeof(unit_t));
 	new->hops = 10;
@@ -142,7 +148,7 @@ static void msg_path_wb(unit_t dst, MSG *m)
 	fwrite(path_str, sizeof(char), strlen(path_str), fmulti_path);
 }
 
-static void msg_deliver(MSG *m, NODE *n)
+static bool msg_deliver(MSG *m, NODE *n)
 {
 	int i;
 
@@ -168,16 +174,16 @@ static void msg_deliver(MSG *m, NODE *n)
 		msg_path_wb(n->user_id,m);
 #endif
 		
-		return;
+		return true;
 	}
 
 	if(m->max_hops != 0 && m->hopc + 1 >= m->max_hops)
-		return;
+		return false;
 	
 	for(i=0; i<n->buffer_p; i++) {
 		if(m->id == n->buffer[i].id)
 			//duplicated msg, drop
-			return;
+			return false;
 	}
 
 	if(n->buffer_p == n->buffer_num)
@@ -192,6 +198,10 @@ static void msg_deliver(MSG *m, NODE *n)
 	dst->dpath = (unit_t *)calloc(m->hops, sizeof(unit_t));
 	msg_copy(dst, m);
 
+	dst->status = 0;
+	dst->copy = MAX_COPY;
+	dst->cnt = 0;
+
 	if(dst->hopc == dst->hops)
 		array_needsize(false, unit_t, dst->dpath, dst->hops, dst->hops + 1, array_zero_init);
 	dst->dpath[dst->hopc] = n->user_id;
@@ -199,6 +209,29 @@ static void msg_deliver(MSG *m, NODE *n)
 	dst->hopc++;
 	n->buffer_p++;
 	MSG_LST[m->id].copy++;
+
+	return true;
+}
+
+static void deliver_scheme(MSG *m, NODE *n)
+{
+#ifdef SIMPLE_INFECT
+	if(m->status == 0 && msg_deliver(m, n)) {
+		m->copy--;
+		m->cnt++;
+		if(m->copy == 0)
+			m->status = 1;
+	}
+
+	return;
+#endif
+}
+
+static inline void msg_drop(MSG *m, NODE *n)
+{
+	MSG *tail = &(n->buffer[n->buffer_p - 1]);
+	msg_copy(m, tail);
+	n->buffer_p--;
 }
 
 static void data_forward(NODE *src, NODE *dst)
@@ -209,25 +242,28 @@ static void data_forward(NODE *src, NODE *dst)
 	
 #ifdef MULTICAST
 	for(i=0; i<src->buffer_p; i++) {
-		if(flag)
-			i--;
+//		if(flag)
+//			i--;
 		
 		m = &(src->buffer[i]);
 		if(MSG_LST[m->id].deliver) {
 		//drop this msg
-			MSG *tail = &(src->buffer[src->buffer_p - 1]);
-			msg_copy(m, tail);
-
-			src->buffer_p--;
-			flag = 1;
+//			msg_drop(m, src);
+//			flag = 1;
+//
+			m->status = 1;	//no need to send this msg out anymore
 			continue;
 		}
 
-		flag = 0;
-		msg_deliver(m, dst);
 		
+#ifdef FLOODING
+		msg_deliver(m, dst);
+#else
+		deliver_scheme(m, dst);
+#endif
+		flag = 0;
 	}
-	
+/*	
 	if(i < _buffer_p) {
 		m = &(src->buffer[i]);
 		if(MSG_LST[m->id].deliver) 
@@ -235,6 +271,7 @@ static void data_forward(NODE *src, NODE *dst)
 		else 
 			msg_deliver(m, dst);
 	}
+*/
 #else
 	for(i=0; i<src->buffer_p; i++) {
 		m = &(src->buffer[i]);

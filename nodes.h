@@ -6,7 +6,7 @@
 
 #define MAX_MSGLST	10
 
-//#define MULTICAST
+#define MULTICAST
 
 typedef enum node_status {
 	UNINIT=0,
@@ -46,6 +46,9 @@ typedef struct neighbor {
 typedef struct message {
 	unit_t id;	//id of this msg
 	unit_t max_hops;	//0 means no hop limit
+	bool status;		//0: needs to send; 1: already send
+	int copy;		//-1: no limitation; >= 1: max copy of data on the node could be sent out before setting status = 1
+	unit_t cnt;		//record how many times the data has been copied when copy = -1
 	
 	unit_t src;
 	unit_t *dst_set;
@@ -61,7 +64,7 @@ typedef struct node {
 	unit_t fpos; //the pos of current record in trace file
 	unit_t user_id;	
 	double pos_x, pos_y;
-	time_t time, next_time;
+	time_t time, next_time, s_time;
 	unit_t pos_id;
 	NODE_STATUS status;
 

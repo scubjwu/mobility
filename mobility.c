@@ -187,7 +187,7 @@ static void init_node(NODE *n, unit_t id)
 	//wb if num of pause bigger than WB_THRESHOLD
 	array_needsize(true, unit_t, n->pause_D, n->pause_num, 10, array_zero_init);
 
-	array_needsize(false, MSG, n->buffer, n->buffer_num, 10, array_zero_init);
+	array_needsize(false, MSG, n->buffer, n->buffer_num, 2, array_zero_init);
 }
 
 static inline void init_pos(POS *p)
@@ -526,6 +526,16 @@ static inline double distance_cal(double x1, double y1, double x2, double y2)
 	return s;
 }
 
+static bool msg_genPro(void)
+{
+// 0.1 probability to generate a msg...
+	int a = (rand() % 1000) + 1;
+	if(a < 100)
+		return true;
+	else
+		return false;
+}
+
 static void node_make_msg(NODE *n)
 {
 //generate the new msg for data dissemination
@@ -537,6 +547,11 @@ static void node_make_msg(NODE *n)
 #define MAX_HOPS	0
 	if(MSG_ID == MAX_MSGLST)
 		return;
+
+/*
+	if(msg_genPro() == false)
+		return;
+*/
 
 	if(n->user_id != SRC)
 		return;
@@ -576,6 +591,7 @@ static void get_node_info(unit_t i)
 
 	if(n->time <= timer && n->next_time > timer) {
 		if(n->status == UNINIT) {
+			n->s_time = timer;
 			n->status = NEW;
 			node_pos_update(i);
 
@@ -620,6 +636,7 @@ NEXT:
 		if(time <= timer && n_time > timer) {
 		// not init yet...
 			if(n->status == UNINIT) {
+				n->s_time = timer;
 				n->status = NEW;
 				n->pos_id = pos;
 				n->pos_x = x;
@@ -1166,7 +1183,9 @@ int main(int argc, char *argv[])
 	
 //start to run
 	bool r_status = false;
+	srand(time(NULL));
 	printf("start to run...\n");
+
 	for(;;) {
 		//replay the trace for each nodes first
 		unit_t i;

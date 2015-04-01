@@ -30,7 +30,7 @@ int main(int argc, char *argv[])
 
 	FILE *fin = fopen(argv[1], "r");
 	FILE *fout = fopen(argv[3], "w");
-	double _delay, _copy, _hops;
+	double _delay = 0, _copy = 0, _hops = 0;
 	int i;
 
 	double copy[10] = {0.};
@@ -41,6 +41,8 @@ int main(int argc, char *argv[])
 	double *delay;
 	delay = (double *)malloc(num * sizeof(double));
 
+	int total = 0;
+	double _ratio = 0;
 	int cnt = 0;
 	int cct = 0;
 	ssize_t read;
@@ -65,17 +67,21 @@ int main(int argc, char *argv[])
 					fprintf(fout, "%lf,%lf\r\n", delay[i], hops[i]);
 			}
 
+			if(total)
+				_ratio += (double)cnt/(double)total;
 
 			cnt = 0;
+			total = 0;
 			memset(delay, 0, sizeof(double) * num);
 			memset(hops, 0, sizeof(double) * num);
 		}
 		else if(strstr(line, DST)) {
 			int dst, status, d, h;
+			total++;
 			getline(&line, &len, fin);
 			sscanf(line, "%d,%d,%d,%d", &dst, &status, &d, &h);
 			if(status == 0) {
-				printf("%d\n", dst);
+			//	printf("%d\n", dst);
 				continue;
 			}
 			
@@ -101,8 +107,9 @@ int main(int argc, char *argv[])
 	_copy /= (double)cct;
 	_delay /= (double)cct;
 	_hops /= (double)cct;
+	_ratio /= (double)cct;
 
-	printf("average copy: %lf\naverage delay: %lf\naverage hops: %lf\n", _copy, _delay, _hops);
+	printf("average copy: %lf\naverage delay: %lf\naverage hops: %lf\ndeliver ratio: %lf\n", _copy, _delay, _hops, _ratio);
 
 	fclose(fout);
 	free(delay);

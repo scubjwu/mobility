@@ -541,10 +541,10 @@ static void node_make_msg(NODE *n)
 //generate the new msg for data dissemination
 #define SRC	0
 /*
- * MAX_HOPS = 3 single copy
- * MAX_HOPS > 3 multiple copies
+ * MAX_HOPS = 3 single relay
+ * MAX_HOPS > 3 multiple relays
  * */
-#define MAX_HOPS	0
+#define MAX_HOPS	4
 	if(MSG_ID == MAX_MSGLST)
 		return;
 
@@ -589,7 +589,7 @@ static void get_node_info(unit_t i)
 	if(n->time > timer)
 		return;	//it means the node does not join the network yet
 
-	if(n->time <= timer && n->next_time > timer) {
+	if(n->time <= timer && n->next_time >= timer) {
 		if(n->status == UNINIT) {
 			n->s_time = timer;
 			n->status = NEW;
@@ -625,7 +625,7 @@ NEXT:
 			return;
 		}
 
-		if(n_time < timer) {
+		if(n_time <= timer) {
 			x = n_x;
 			y = n_y;
 			time = n_time;
@@ -1183,7 +1183,6 @@ int main(int argc, char *argv[])
 	
 //start to run
 	bool r_status = false;
-	srand(time(NULL));
 	printf("start to run...\n");
 
 	for(;;) {

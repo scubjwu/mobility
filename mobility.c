@@ -7,6 +7,7 @@
 #include <math.h>
 #include <pthread.h>
 #include <signal.h>
+#include <gsl/gsl_rng.h>
 
 #include "common.h"
 #include "nodes.h"
@@ -22,6 +23,7 @@ NODE *nlist;
 DATA_LST MSG_LST[MAX_MSGLST] = {0};
 time_t timer;
 FILE *fmulti_path;
+gsl_rng *Rng_r;
 
 static POS *plist;
 static unit_t nodes_num;
@@ -243,6 +245,15 @@ static void init_fifo(void)
 	ntb_queue = fifo_alloc(QUEUE_LEN);
 }
 
+static void init_rng(void)
+{
+	const gsl_rng_type *T;
+	gsl_rng_env_setup();
+
+	T = gsl_rng_default;
+	Rng_r = gsl_rng_alloc(T);
+}
+
 static void init_struct(const char *file)
 {
 	char cmd[CMDLEN] = {0};
@@ -279,6 +290,8 @@ static void init_struct(const char *file)
 	init_wb();
 
 	init_monitor();
+
+	init_rng();
 }
 
 static void free_node(NODE *n)
@@ -371,6 +384,8 @@ static void free_struct(void)
 	fifo_free(pab_queue);
 	fifo_free(nb_queue);
 	fifo_free(ntb_queue);
+
+	gsl_rng_free(Rng_r);
 }
 
 static void pos_update(const NODE *n)
@@ -540,11 +555,6 @@ static void node_make_msg(NODE *n)
 {
 //generate the new msg for data dissemination
 #define SRC	0
-/*
- * MAX_HOPS = 3 single relay
- * MAX_HOPS > 3 multiple relays
- * */
-#define MAX_HOPS	4
 	if(MSG_ID == MAX_MSGLST)
 		return;
 
@@ -572,7 +582,6 @@ static void node_make_msg(NODE *n)
 
 	MSG_ID++;
 	n->buffer_p++;
-#undef MAX_HOPS
 #undef SRC
 }
 
@@ -1125,17 +1134,6 @@ static void print_runtime(int para)
 	BlockSignal(false, SIGUSR1);
 }
 
-static void msg_status_update(DATA_LST *d)
-{
-	int i;
-	for(i=0; i<d->dst_len; i++) {
-		if(d->dst[i].status == false)
-			return;
-	}
-
-	d->deliver = true;
-}
-
 static void wm_msg_wb(void)
 {
 	FILE *fp = fopen("./msg_deliver.csv", "w");
@@ -1210,12 +1208,6 @@ int main(int argc, char *argv[])
 
 		//reset plist very time
 		plist_clear();
-
-		//update the msg status
-		for(i=0; i<MSG_ID; i++) {
-			DATA_LST *tmp = &MSG_LST[i];
-			msg_status_update(tmp);
-		}
 	}
 
 	free_struct();

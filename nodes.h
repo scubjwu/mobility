@@ -8,6 +8,13 @@
 
 #define MULTICAST
 
+/*
+ * MAX_HOPS = 3 single relay
+ * MAX_HOPS > 3 multiple relays
+ * */
+#define MAX_HOPS	5
+#define MAX_COPY	400
+
 typedef enum node_status {
 	UNINIT=0,
 	NEW,
@@ -46,7 +53,7 @@ typedef struct neighbor {
 typedef struct message {
 	unit_t id;	//id of this msg
 	unit_t max_hops;	//0 means no hop limit
-	bool status;		//0: needs to send; 1: already send
+	bool status;		//0: needs to send; 1: already delivered; 2: reach the copy limitation
 	int copy;		//-1: no limitation; >= 1: max copy of data on the node could be sent out before setting status = 1
 	unit_t cnt;		//record how many times the data has been copied when copy = -1
 	

@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
+#include <gsl/gsl_rng.h>
 
 #include "common.h"
 #include "nodes.h"
@@ -10,13 +11,28 @@
 #define RELATION_FILE	"./gowalla_edges.txt"
 #define NODE_ID_FILE	"./node.id"
 
-#define SIMPLE_INFECT
-#define MAX_COPY	-1
-
 extern DATA_LST MSG_LST[MAX_MSGLST];
 extern NODE *nlist;
 extern time_t timer;
 extern FILE *fmulti_path;
+extern gsl_rng *Rng_r;
+
+#define TRANS_SCHEME	1
+//#define FLOODING
+#define SIMPLE_INFECT
+#define NEIGHBOR_PORTION	2
+//#define DYNAMIC_COPY
+
+static void msg_status_update(DATA_LST *d)
+{
+	int i;
+	for(i=0; i<d->dst_len; i++) {
+		if(d->dst[i].status == false)
+			return;
+	}
+
+	d->deliver = true;
+}
 
 static bool check_node_id(FILE *fp, unit_t id)
 {
@@ -156,19 +172,23 @@ static bool msg_deliver(MSG *m, NODE *n)
 		DATA_LST *tmp = &MSG_LST[m->id];
 
 		for(i=0; i<tmp->dst_len; i++) {
-			if(tmp->dst[i].id == n->user_id) {
-				if(tmp->dst[i].status == false) {
-					tmp->copy++;
-					tmp->dst[i].delay = timer - m->time;
-					tmp->dst[i].status = true;
-					tmp->dst[i].hops = m->hopc + 1;
-					tmp->dst[i].path = (unit_t *)calloc(m->hopc + 1, sizeof(unit_t));
-					memcpy(tmp->dst[i].path, m->dpath, m->hopc * sizeof(unit_t));
-					tmp->dst[i].path[m->hopc] = n->user_id;
-				}
+			if(tmp->dst[i].id == n->user_id &&
+			   tmp->dst[i].status == false) {
+				tmp->copy++;
+				tmp->dst[i].delay = timer - m->time;
+				tmp->dst[i].status = true;
+				tmp->dst[i].hops = m->hopc + 1;
+				tmp->dst[i].path = (unit_t *)calloc(m->hopc + 1, sizeof(unit_t));
+				memcpy(tmp->dst[i].path, m->dpath, m->hopc * sizeof(unit_t));
+				tmp->dst[i].path[m->hopc] = n->user_id;
+				
+				msg_status_update(tmp);
 				break;
 			}
 		}
+		
+		if(tmp->deliver)
+			m->status = 1;
 
 #ifndef MULTICAST
 		msg_path_wb(n->user_id,m);
@@ -181,9 +201,12 @@ static bool msg_deliver(MSG *m, NODE *n)
 		return false;
 	
 	for(i=0; i<n->buffer_p; i++) {
-		if(m->id == n->buffer[i].id)
+		if(m->id == n->buffer[i].id) {
+			if(n->buffer[i].status == 1)
+				m->status = 1;
 			//duplicated msg, drop
 			return false;
+		}
 	}
 
 	if(n->buffer_p == n->buffer_num)
@@ -199,7 +222,11 @@ static bool msg_deliver(MSG *m, NODE *n)
 	msg_copy(dst, m);
 
 	dst->status = 0;
+#ifdef DYNAMIC_COPY
+	dst->copy = MAX_COPY / (dst->hopc + 1);
+#else
 	dst->copy = MAX_COPY;
+#endif
 	dst->cnt = 0;
 
 	if(dst->hopc == dst->hops)
@@ -220,7 +247,7 @@ static void deliver_scheme(MSG *m, NODE *n)
 		m->copy--;
 		m->cnt++;
 		if(m->copy == 0)
-			m->status = 1;
+			m->status = 2;
 	}
 
 	return;
@@ -236,42 +263,22 @@ static inline void msg_drop(MSG *m, NODE *n)
 
 static void data_forward(NODE *src, NODE *dst)
 {
-	int i, flag = 0;	
+	int i;	
 	unit_t _buffer_p = src->buffer_p;
 	MSG *m = NULL;
 	
 #ifdef MULTICAST
 	for(i=0; i<src->buffer_p; i++) {
-//		if(flag)
-//			i--;
-		
 		m = &(src->buffer[i]);
-		if(MSG_LST[m->id].deliver) {
-		//drop this msg
-//			msg_drop(m, src);
-//			flag = 1;
-//
-			m->status = 1;	//no need to send this msg out anymore
+		if(m->status == 1)
 			continue;
-		}
 
-		
 #ifdef FLOODING
 		msg_deliver(m, dst);
 #else
 		deliver_scheme(m, dst);
 #endif
-		flag = 0;
 	}
-/*	
-	if(i < _buffer_p) {
-		m = &(src->buffer[i]);
-		if(MSG_LST[m->id].deliver) 
-			src->buffer_p--;
-		else 
-			msg_deliver(m, dst);
-	}
-*/
 #else
 	for(i=0; i<src->buffer_p; i++) {
 		m = &(src->buffer[i]);
@@ -287,17 +294,69 @@ static void msg_exchange(NODE *n1, NODE *n2)
 	data_forward(n2, n1);
 }
 
+static bool random_select(double ratio)
+{
+	double r = gsl_rng_uniform(Rng_r);
+
+	if(r < ratio)
+		return true;
+	else
+		return false;
+
+}
+
+static int random_neighbor(int src, int range, double ratio)
+{
+	int i;
+	while(1) {
+		for(i=0; i<range; i++) {
+			if(i == src)
+				continue;
+
+			if(random_select(ratio))
+				return i;
+		}
+	}
+}
+
 void data_trans(NODE *n, POS *p)
 {
 	unit_t i, j;
-	for(i=0; i<p->node_num-1; i++) {
-		for(j=i+1; j<p->node_num; j++) {			
+#if (TRANS_SCHEME == 1)
+	//select part of its neighbors to send data
+	for(i=0; i<p->node_p; i++) {
+		for(j=0; j<p->node_p; j++) {
+			if(i == j || j % NEIGHBOR_PORTION)
+				continue;
+			
+			NODE *n1 = &nlist[p->node_id[i]];
+			NODE *n2 = &nlist[p->node_id[j]];
+
+			data_forward(n1, n2);
+		}
+	}
+#elif (TRANS_SCHEME == 2)
+	//select one random neighbor to send data
+	double s_ratio = 1. / (double)p->node_p;
+	for(i=0; i<p->node_p; i++) {
+		int next_hop = random_neighbor(i, p->node_p, s_ratio);
+
+		NODE *n1 = &nlist[p->node_id[i]];
+		NODE *n2 = &nlist[p->node_id[next_hop]];
+
+		data_forward(n1, n2);
+	}
+#else
+	//select all neighbors to send data
+	for(i=0; i<p->node_p - 1; i++) {
+		for(j=i+1; j<p->node_p; j++) {			
 			NODE *n1 = &nlist[p->node_id[i]];
 			NODE *n2 = &nlist[p->node_id[j]];
 
 			msg_exchange(n1, n2);
 		}
 	}
+#endif
 }
 
 #if 0

@@ -6,13 +6,17 @@
 
 #define MAX_MSGLST	10
 
-#define MULTICAST
+//#define MULTICAST
 
 /*
  * MAX_HOPS = 3 single relay
  * MAX_HOPS > 3 multiple relays
+ * MAX_HOPS = 0 no hop limitation
  * */
-#define MAX_HOPS	5
+#define MAX_HOPS	0
+/*
+ * MAX_COPY = -1 no copy limitation
+ * */
 #define MAX_COPY	400
 
 typedef enum node_status {

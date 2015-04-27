@@ -9,7 +9,12 @@
 #include "nodes.h"
 
 #define RELATION_FILE	"./gowalla_edges.txt"
+
+#ifdef MULTICAST
 #define NODE_ID_FILE	"./node.id"
+#else
+#define NODE_ID_FILE	"./single_node.id"
+#endif
 
 extern DATA_LST MSG_LST[MAX_MSGLST];
 extern NODE *nlist;
@@ -17,7 +22,7 @@ extern time_t timer;
 extern FILE *fmulti_path;
 extern gsl_rng *Rng_r;
 
-#define TRANS_SCHEME	1
+#define TRANS_SCHEME	3
 //#define FLOODING
 #define SIMPLE_INFECT
 #define NEIGHBOR_PORTION	2
@@ -191,7 +196,7 @@ static bool msg_deliver(MSG *m, NODE *n)
 			m->status = 1;
 
 #ifndef MULTICAST
-		msg_path_wb(n->user_id,m);
+		msg_path_wb(n->user_id, m);
 #endif
 		
 		return true;
@@ -202,8 +207,10 @@ static bool msg_deliver(MSG *m, NODE *n)
 	
 	for(i=0; i<n->buffer_p; i++) {
 		if(m->id == n->buffer[i].id) {
+#ifdef MULTICAST
 			if(n->buffer[i].status == 1)
 				m->status = 1;
+#endif
 			//duplicated msg, drop
 			return false;
 		}

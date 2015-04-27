@@ -13,7 +13,7 @@
  * MAX_HOPS > 3 multiple relays
  * */
 #define MAX_HOPS	5
-#define MAX_COPY	400
+#define MAX_COPY	200
 
 typedef enum node_status {
 	UNINIT=0,
@@ -53,9 +53,17 @@ typedef struct neighbor {
 typedef struct message {
 	unit_t id;	//id of this msg
 	unit_t max_hops;	//0 means no hop limit
-	bool status;		//0: needs to send; 1: already delivered; 2: reach the copy limitation
+	int status;		//0: needs to send; 1: already delivered; 2: reach the copy limitation; 3: reach the trans round limitation
 	int copy;		//-1: no limitation; >= 1: max copy of data on the node could be sent out before setting status = 1
 	unit_t cnt;		//record how many times the data has been copied when copy = -1
+
+	int i_hop;	//# of hops within a community
+	int i_tries;	//# of trans round with in a community
+
+	int c_copy;	//# of copies a node could re-trans if failed in a community
+	int c_tries;	//# of trans round among different communities
+
+	bool new_recv;	// true: received this data in this time slot; false: old data received in previous time slots
 	
 	unit_t src;
 	unit_t *dst_set;

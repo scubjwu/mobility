@@ -23,6 +23,7 @@ NODE *nlist;
 DATA_LST MSG_LST[MAX_MSGLST] = {0};
 time_t timer;
 FILE *fmulti_path;
+FILE *f_infect;
 gsl_rng *Rng_r;
 
 static POS *plist;
@@ -117,6 +118,12 @@ static void init_file(const char *file)
 		exit(1);
 	}
 #endif
+
+	f_infect = fopen("./infect_nodes.csv", "w");
+	if(f_infect == NULL) {
+		printf("fail to create infected nodes log file");
+		exit(1);
+	}
 
 #undef CMD_FORMAT
 }
